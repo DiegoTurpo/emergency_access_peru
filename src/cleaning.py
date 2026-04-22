@@ -219,14 +219,25 @@ def clean_distritos(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     - UBIGEO zero-padded to 6 characters.
     """
     gdf = gdf.copy()
+
+    # Detect the geometry column before uppercasing (pyogrio may load it as 'GEOMETRY')
+    geom_col = gdf.geometry.name
     gdf.columns = [c.strip().upper() for c in gdf.columns]
+    geom_col_upper = geom_col.upper()
+
+    # Re-set the active geometry column after renaming
+    gdf = gdf.set_geometry(geom_col_upper)
 
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:4326")
     elif gdf.crs.to_epsg() != 4326:
         gdf = gdf.to_crs("EPSG:4326")
 
-    gdf = gdf.rename(columns={"IDDIST": "ubigeo", "IDDPTO": "iddpto", "IDPROV": "idprov"})
+    gdf = gdf.rename(columns={
+        "IDDIST": "ubigeo", "IDDPTO": "iddpto", "IDPROV": "idprov",
+        geom_col_upper: "geometry",
+    })
+    gdf = gdf.set_geometry("geometry")
     gdf["ubigeo"] = pad_ubigeo(gdf["ubigeo"])
 
     keep = [c for c in ["ubigeo", "iddpto", "idprov", "geometry"] if c in gdf.columns]

@@ -59,6 +59,29 @@ def load_ipress(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
     return df
 
 
+_SUSALUD_ENCODINGS = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
+
+
+def _detect_sep(path: Path) -> str:
+    """Detect CSV separator by inspecting the header line.
+    Files 2015–2021 use commas; files 2022+ use semicolons."""
+    with open(path, "rb") as f:
+        header = f.readline().decode("latin-1", errors="replace")
+    return ";" if ";" in header else ","
+
+
+def _read_susalud_file(path: Path) -> pd.DataFrame:
+    """Try encodings in order; auto-detect separator per file."""
+    sep = _detect_sep(path)
+    for enc in _SUSALUD_ENCODINGS:
+        try:
+            df = pd.read_csv(path, encoding=enc, sep=sep, dtype={"UBIGEO": str})
+            return df
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise ValueError(f"Could not decode {path.name} with any of {_SUSALUD_ENCODINGS}")
+
+
 def load_susalud(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
     """
     Load and concatenate all annual SUSALUD emergency production files.
@@ -73,10 +96,8 @@ def load_susalud(raw_dir: Path = RAW_DIR) -> pd.DataFrame:
 
     dfs = []
     for f in files:
-        enc = detect_encoding(f)
-        df = pd.read_csv(f, encoding=enc, sep=";", dtype={"UBIGEO": str})
+        df = _read_susalud_file(f)
         df = df.rename(columns=SUSALUD_COL_MAP)
-        # Tag source year from filename so it survives concat
         dfs.append(df)
 
     combined = pd.concat(dfs, ignore_index=True)
