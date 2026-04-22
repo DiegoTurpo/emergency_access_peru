@@ -1,0 +1,29 @@
+# ── Core data & geospatial ────────────────────────────────────────────────────
+pandas==2.2.2
+numpy==1.26.4
+geopandas==1.0.1
+shapely==2.0.5
+pyproj==3.6.1
+fiona==1.9.6
+pyogrio==0.8.0          # fast alternative I/O backend for geopandas
+
+# ── Mapping ───────────────────────────────────────────────────────────────────
+folium==0.17.0
+branca==0.7.2            # folium dependency (HTML/JS templates)
+streamlit-folium==0.22.0 # renders folium maps inside Streamlit
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+matplotlib==3.9.1
+seaborn==0.13.2
+plotly==5.22.0           # optional interactive charts in Streamlit
+
+# ── Web app ───────────────────────────────────────────────────────────────────
+streamlit==1.36.0
+
+# ── Scientific / stats ────────────────────────────────────────────────────────
+scipy==1.13.1
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+requests==2.32.3
+openpyxl==3.1.3          # Excel I/O if needed
+Pillow==10.4.0           # image handling (required by several libs above)
