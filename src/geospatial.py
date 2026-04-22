@@ -307,7 +307,7 @@ def compute_district_access(
         access[col] = access[col].round(2)
 
     access = access.add_suffix(f"_{label}").rename(
-        columns={f"ubigeo_{label}": "ubigeo", f"n_ccpp_{label}": "n_ccpp"}
+        columns={f"ubigeo_{label}": "ubigeo"}
     )
 
     print(f"  District access ({label}): {len(access):,} districts with CCPP data")
@@ -448,7 +448,7 @@ def _print_summary(master: gpd.GeoDataFrame):
     has_access = master["dist_median_m_baseline"].notna()
     print(f"  Districts with CCPP access data      : {has_access.sum():,}")
     if has_access.any():
-        med = master.loc[has_access, "dist_median_m_baseline"].median()
+        med = master.loc[has_access, "dist_median_m_baseline"].astype(float).median()
         print(f"  National median dist to facility     : {med/1000:.1f} km")
     print()
 
