@@ -1,29 +1,36 @@
 # ── Core data & geospatial ────────────────────────────────────────────────────
-pandas==2.2.2
-numpy==1.26.4
-geopandas==1.0.1
-shapely==2.0.5
-pyproj==3.6.1
-fiona==1.9.6
-pyogrio==0.8.0          # fast alternative I/O backend for geopandas
+pandas==3.0.2
+numpy==2.4.3
+geopandas==1.1.3
+shapely==2.1.2
+pyproj==3.7.2
+fiona==1.10.1
+pyogrio==0.11.1
 
 # ── Mapping ───────────────────────────────────────────────────────────────────
-folium==0.17.0
-branca==0.7.2            # folium dependency (HTML/JS templates)
-streamlit-folium==0.22.0 # renders folium maps inside Streamlit
+folium==0.20.0
+branca==0.8.2
+streamlit-folium==0.27.1
 
 # ── Visualization ─────────────────────────────────────────────────────────────
-matplotlib==3.9.1
+matplotlib==3.10.8
 seaborn==0.13.2
-plotly==5.22.0           # optional interactive charts in Streamlit
+plotly==6.7.0
 
 # ── Web app ───────────────────────────────────────────────────────────────────
-streamlit==1.36.0
+streamlit==1.56.0
 
 # ── Scientific / stats ────────────────────────────────────────────────────────
-scipy==1.13.1
+scipy==1.17.1
+pyarrow==24.0.0
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
-requests==2.32.3
-openpyxl==3.1.3          # Excel I/O if needed
-Pillow==10.4.0           # image handling (required by several libs above)
+chardet==7.4.3
+requests==2.33.1
+openpyxl==3.1.5
+Pillow==12.1.1
+
+# Install with conda (recommended — avoids C-compiler issues on Windows):
+#   conda create -n homework2 python=3.11
+#   conda install -n homework2 -c conda-forge geopandas folium matplotlib seaborn pandas numpy scipy pillow pyproj shapely fiona pyogrio openpyxl
+#   pip install streamlit streamlit-folium plotly chardet requests branca pyarrow
