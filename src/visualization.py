@@ -16,13 +16,19 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
+from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.patches import Patch as MPatch
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import geopandas as gpd
+import folium
+import branca.colormap as bcm
 from pathlib import Path
 
-FIGURES_DIR = Path(__file__).resolve().parents[1] / "output" / "figures"
-DATA_DIR    = Path(__file__).resolve().parents[1] / "output" / "tables"
+FIGURES_DIR   = Path(__file__).resolve().parents[1] / "output" / "figures"
+DATA_DIR      = Path(__file__).resolve().parents[1] / "output" / "tables"
+PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -549,6 +555,485 @@ def run_visualization_pipeline():
     fig06_sensitivity(df)
 
     print(f"\n  All figures saved to {FIGURES_DIR}")
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TASK 5 — Geospatial maps (GeoPandas static + Folium interactive)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Structural emergency categories (same definition as geospatial.py)
+_EMRG_CATS = {"I-3", "I-4", "II-1", "II-2", "II-E", "III-1", "III-2", "III-E"}
+
+# Categorical choropleth helpers
+_Q_TO_INT = {"Q1 (Best)": 1, "Q2": 2, "Q3": 3, "Q4": 4, "Q5 (Worst)": 5}
+_Q_COLORS = ["#cccccc"] + [QUINTILE_PALETTE[q] for q in QUINTILE_ORDER]
+_QCMAP    = ListedColormap(_Q_COLORS)
+_QNORM    = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5], ncolors=6)
+
+PERU_CENTER = [-9.19, -75.0]
+
+
+def _save_html(m: folium.Map, name: str):
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    path = FIGURES_DIR / name
+    m.save(str(path))
+    print(f"  Saved -> {path.name}")
+
+
+def _q_col(gdf: gpd.GeoDataFrame, quintile_col: str) -> pd.Series:
+    """Map quintile string to integer code (0=no data, 1-5=Q1-Q5)."""
+    return gdf[quintile_col].map(_Q_TO_INT).fillna(0).astype(float)
+
+
+def _dept_boundaries(master: gpd.GeoDataFrame) -> gpd.GeoSeries:
+    """Return dissolved department boundary lines for overlay."""
+    return master.dissolve(by="iddpto").boundary
+
+
+def _q_legend_patches(with_nodata: bool = False) -> list:
+    patches = []
+    if with_nodata:
+        patches.append(MPatch(facecolor="#cccccc", edgecolor="#999", label="No data"))
+    for q in QUINTILE_ORDER:
+        patches.append(MPatch(facecolor=QUINTILE_PALETTE[q], edgecolor="#999", label=q))
+    return patches
+
+
+def _prep_for_folium(master: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """
+    Slim + simplify district GeoDataFrame for Folium export.
+    Converts all nullable types, fills NaN, and simplifies geometry
+    to ~1 km tolerance for faster HTML rendering.
+    """
+    cols = [
+        "ubigeo", "iddpto",
+        "hadi_baseline", "hadi_quintile_baseline",
+        "hadi_alternative", "hadi_quintile_alternative",
+        "quintile_shift", "classification_change",
+        "n_emergency_active", "n_emergency_structural",
+        "pct_ccpp_gt20km_baseline", "pct_ccpp_gt20km_alternative",
+        "dist_median_m_baseline", "susalud_atenciones",
+        "n_ccpp_baseline", "camas_total",
+        "geometry",
+    ]
+    df = master[cols].copy()
+    df.geometry = df.geometry.simplify(0.01, preserve_topology=True)
+
+    # Round floats, fill NA → JSON-safe
+    for c in ["hadi_baseline", "hadi_alternative"]:
+        df[c] = df[c].round(3).fillna(-1)
+    for c in ["pct_ccpp_gt20km_baseline", "pct_ccpp_gt20km_alternative"]:
+        df[c] = df[c].round(1).fillna(-1)
+    df["dist_median_km"] = (df["dist_median_m_baseline"] / 1000).round(1).fillna(-1)
+    for c in ["n_ccpp_baseline", "camas_total", "n_emergency_active",
+              "n_emergency_structural", "susalud_atenciones"]:
+        df[c] = df[c].fillna(0).astype(int)
+    df["quintile_shift"] = df["quintile_shift"].fillna(0).astype(int)
+    for c in ["hadi_quintile_baseline", "hadi_quintile_alternative",
+              "classification_change"]:
+        df[c] = df[c].fillna("No data").astype(str).replace("nan", "No data")
+    return df
+
+
+# ── Static map 1 — HADI quintile choropleth (Q3) ─────────────────────────────
+
+def map01_hadi_choropleth(master: gpd.GeoDataFrame):
+    """
+    GeoPandas choropleth of HADI baseline quintile across all 1,873 districts.
+
+    Q3 answered spatially: reveals the strong geographic concentration of
+    deprivation — Q5 districts cluster in Loreto, Ucayali, and Amazonas
+    (Amazon basin), while Q1 districts concentrate along the coast and in
+    Lima, showing a coastal–Amazonian divide that is not visible in charts.
+
+    Choice rationale: A choropleth is the only chart type that can show BOTH
+    which districts are deprived AND where they are simultaneously.
+    Alternative rejected: a ranked bar of all 1,873 districts (unreadable);
+    a dot density map (adds noise without adding geographic structure).
+    """
+    _style()
+    fig, ax = plt.subplots(figsize=(10, 14))
+
+    df = master.copy()
+    df["_q"] = _q_col(df, "hadi_quintile_baseline")
+
+    df.plot(column="_q", cmap=_QCMAP, norm=_QNORM, ax=ax,
+            linewidth=0.08, edgecolor="#cccccc")
+    _dept_boundaries(master).plot(ax=ax, color="white", linewidth=0.7, alpha=0.7)
+
+    # Legend with district counts
+    q_counts = master["hadi_quintile_baseline"].value_counts()
+    patches = [MPatch(facecolor="#cccccc", edgecolor="#aaa", label="No data (3)")]
+    for q in QUINTILE_ORDER:
+        n = q_counts.get(q, 0)
+        patches.append(MPatch(facecolor=QUINTILE_PALETTE[q], edgecolor="#999",
+                               label=f"{q}  (n={n:,})"))
+
+    ax.legend(handles=patches, loc="lower left", fontsize=9,
+              title="HADI Quintile", title_fontsize=10, framealpha=0.9)
+    ax.set_title(
+        "Q3 — Healthcare Access Deprivation Index (Baseline)\n"
+        "Higher quintile = more underserved. Department boundaries in white.",
+        fontsize=13, fontweight="bold", pad=12,
+    )
+    ax.axis("off")
+    _save(fig, "map01_hadi_choropleth.png")
+
+
+# ── Static map 2 — Baseline vs Alternative side-by-side (Q4) ─────────────────
+
+def map02_baseline_vs_alternative(master: gpd.GeoDataFrame):
+    """
+    Side-by-side GeoPandas choropleth: baseline (left) vs alternative (right).
+
+    Q4 answered spatially: The two maps use identical district geometries and
+    identical colour scale; visual differences pin WHERE the specification
+    choice matters most. The Amazon basin expands into Q4–Q5 under the
+    alternative (fewer structural facilities), while the coast stays mostly Q1.
+
+    Choice rationale: A direct side-by-side map is the clearest way to show
+    spatial sensitivity — the reader can immediately scan for colour changes.
+    Alternative rejected: a single 'difference' map (quintile-shift choropleth)
+    loses the absolute deprivation level, showing only the delta. Both
+    the absolute classification AND the change are analytically important.
+    """
+    _style()
+    fig, axes = plt.subplots(1, 2, figsize=(18, 14))
+
+    df = master.copy()
+    df["_qb"] = _q_col(df, "hadi_quintile_baseline")
+    df["_qa"] = _q_col(df, "hadi_quintile_alternative")
+    dept_bounds = _dept_boundaries(master)
+
+    for ax, col, title in [
+        (axes[0], "_qb", "Baseline\n(SUSALUD-confirmed, 3,093 facilities)"),
+        (axes[1], "_qa", "Alternative\n(structural category ≥ I-3, 1,854 facilities)"),
+    ]:
+        df.plot(column=col, cmap=_QCMAP, norm=_QNORM, ax=ax,
+                linewidth=0.08, edgecolor="#cccccc")
+        dept_bounds.plot(ax=ax, color="white", linewidth=0.7, alpha=0.7)
+        ax.set_title(title, fontsize=12, fontweight="bold")
+        ax.axis("off")
+
+    patches = [MPatch(facecolor="#cccccc", edgecolor="#aaa", label="No data")]
+    for q in QUINTILE_ORDER:
+        patches.append(MPatch(facecolor=QUINTILE_PALETTE[q], edgecolor="#999", label=q))
+    fig.legend(handles=patches, loc="lower center", ncol=6,
+               fontsize=10, title="HADI Quintile", title_fontsize=11,
+               framealpha=0.9, bbox_to_anchor=(0.5, 0.01))
+
+    fig.suptitle(
+        "Q4 — Sensitivity: which districts change HADI quintile\n"
+        "when switching from SUSALUD-confirmed to structural facility definition?",
+        fontsize=14, fontweight="bold",
+    )
+    plt.tight_layout(rect=[0, 0.05, 1, 0.97])
+    _save(fig, "map02_baseline_vs_alternative.png")
+
+
+# ── Static map 3 — Spatial access gap choropleth (Q2) ────────────────────────
+
+def map03_access_gap(master: gpd.GeoDataFrame):
+    """
+    Continuous choropleth of % populated centers > 20 km from nearest
+    emergency facility (baseline specification).
+
+    Q2 answered spatially: Reveals that spatial isolation is a distinct
+    phenomenon from structural supply shortage. Several districts with moderate
+    HADI scores (Q3) have high isolation because their populated centers are
+    scattered — a pattern visible only on a map, not in the charts.
+
+    Choice rationale: A continuous graduated colour scale (0–100%) shows the
+    full gradient of spatial isolation and avoids discretisation artefacts.
+    White-to-red highlights the severity gradient naturally (white = no gap).
+    Alternative rejected: binary map (above/below 50%) erases the gradient;
+    the Q3 map (fig02 left panel) already shows the composite score.
+    """
+    _style()
+    fig, ax = plt.subplots(figsize=(10, 14))
+
+    df = master.copy()
+    df["pct20"] = df["pct_ccpp_gt20km_baseline"].fillna(-1)
+
+    # Use custom bins: 0, 10, 25, 50, 75, 100
+    df_valid = df[df["pct20"] >= 0]
+    df_miss  = df[df["pct20"] < 0]
+
+    df_miss.plot(ax=ax, color="#dddddd", linewidth=0.08, edgecolor="#cccccc")
+    df_valid.plot(
+        column="pct20", cmap="RdYlGn_r",
+        vmin=0, vmax=100,
+        ax=ax, linewidth=0.08, edgecolor="#cccccc",
+        legend=True,
+        legend_kwds={
+            "label": "% of populated centers > 20 km from nearest facility",
+            "orientation": "horizontal",
+            "shrink": 0.55,
+            "pad": 0.02,
+        },
+    )
+    _dept_boundaries(master).plot(ax=ax, color="white", linewidth=0.7, alpha=0.7)
+
+    n_zero = (df_valid["pct20"] == 0).sum()
+    n_all  = (df_valid["pct20"] == 100).sum()
+    ax.text(
+        0.02, 0.04,
+        f"Deep green = 0% isolated ({n_zero:,} districts)\n"
+        f"Deep red = 100% isolated ({n_all:,} districts)",
+        transform=ax.transAxes, fontsize=9,
+        bbox=dict(facecolor="white", alpha=0.8, boxstyle="round"),
+    )
+
+    ax.set_title(
+        "Q2 — Spatial Access Gap: % of populated centers\n"
+        "more than 20 km from the nearest emergency facility (baseline)",
+        fontsize=13, fontweight="bold", pad=12,
+    )
+    ax.axis("off")
+    _save(fig, "map03_access_gap.png")
+
+
+# ── Interactive map 4 — HADI explorer (Q3 + Q4) ──────────────────────────────
+
+def map04_hadi_explorer(master: gpd.GeoDataFrame):
+    """
+    Folium choropleth with baseline and alternative HADI layers (toggleable).
+
+    Features
+    --------
+    - Layer 1 (default): baseline HADI quintile with custom colours
+    - Layer 2 (toggle):  alternative HADI quintile — same scale, different values
+    - Hover tooltip: UBIGEO, quintile, HADI score, facilities, distance, SUSALUD visits
+    - Layer control to switch specifications
+    - CartoDB Positron basemap (minimal, keeps district colours prominent)
+
+    Q3 + Q4 answered interactively: the reader can hover over any district to
+    read all six underlying metrics, and toggle between specifications to observe
+    reclassification in context — something static maps cannot provide.
+    """
+    gdf = _prep_for_folium(master)
+    geojson_str = gdf.to_json()
+
+    m = folium.Map(location=PERU_CENTER, zoom_start=5,
+                   tiles="CartoDB positron", control_scale=True)
+
+    tooltip_fields  = ["ubigeo", "hadi_quintile_baseline", "hadi_baseline",
+                       "n_emergency_active", "pct_ccpp_gt20km_baseline",
+                       "dist_median_km", "susalud_atenciones", "camas_total"]
+    tooltip_aliases = ["UBIGEO:", "Quintile (baseline):", "HADI score:",
+                       "Emergency facilities:", "% CCPP > 20 km:",
+                       "Median dist. (km):", "SUSALUD visits:", "Beds (camas):"]
+
+    # Layer 1 — baseline (shown by default)
+    folium.GeoJson(
+        data=geojson_str,
+        style_function=lambda feat: {
+            "fillColor": QUINTILE_PALETTE.get(
+                feat["properties"].get("hadi_quintile_baseline", ""), "#cccccc"),
+            "fillOpacity": 0.75,
+            "color": "white",
+            "weight": 0.4,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=tooltip_fields,
+            aliases=tooltip_aliases,
+            localize=True,
+            sticky=True,
+            style="font-size:12px;",
+        ),
+        name="HADI — Baseline (SUSALUD-confirmed)",
+        show=True,
+    ).add_to(m)
+
+    # Layer 2 — alternative (hidden by default, toggled via LayerControl)
+    alt_tooltip_fields  = ["ubigeo", "hadi_quintile_alternative", "hadi_alternative",
+                            "n_emergency_structural", "pct_ccpp_gt20km_alternative",
+                            "dist_median_km", "susalud_atenciones"]
+    alt_tooltip_aliases = ["UBIGEO:", "Quintile (alternative):", "HADI score:",
+                            "Structural facilities:", "% CCPP > 20 km:",
+                            "Median dist. (km):", "SUSALUD visits:"]
+    folium.GeoJson(
+        data=geojson_str,
+        style_function=lambda feat: {
+            "fillColor": QUINTILE_PALETTE.get(
+                feat["properties"].get("hadi_quintile_alternative", ""), "#cccccc"),
+            "fillOpacity": 0.75,
+            "color": "white",
+            "weight": 0.4,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=alt_tooltip_fields,
+            aliases=alt_tooltip_aliases,
+            localize=True, sticky=True,
+            style="font-size:12px;",
+        ),
+        name="HADI — Alternative (structural category ≥ I-3)",
+        show=False,
+    ).add_to(m)
+
+    # HTML legend (Folium GeoJson has no built-in legend)
+    legend_html = """
+    <div style="position:fixed;bottom:30px;left:30px;z-index:1000;background:white;
+         padding:10px 14px;border-radius:8px;box-shadow:2px 2px 6px rgba(0,0,0,.3);
+         font-family:sans-serif;font-size:12px;">
+      <b>HADI Quintile</b><br>
+      <i style="background:#2c7bb6;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;"></i>Q1 (Best) &nbsp;
+      <i style="background:#abd9e9;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;"></i>Q2<br>
+      <i style="background:#ffffbf;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;border:1px solid #ccc;"></i>Q3 &nbsp;
+      <i style="background:#fdae61;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;"></i>Q4<br>
+      <i style="background:#d7191c;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;"></i>Q5 (Worst) &nbsp;
+      <i style="background:#cccccc;width:14px;height:14px;display:inline-block;
+         border-radius:2px;margin-right:5px;"></i>No data<br>
+      <small>Toggle layers with the &#x2261; control (top-right)</small>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
+    folium.LayerControl(collapsed=False).add_to(m)
+
+    _save_html(m, "map_hadi_explorer.html")
+
+
+# ── Interactive map 5 — Facilities on access-gap background (Q1 + Q2) ─────────
+
+def map05_facilities_access(master: gpd.GeoDataFrame,
+                             ipress: gpd.GeoDataFrame,
+                             facility_annual: pd.DataFrame):
+    """
+    Folium map: district access gap + emergency facility markers.
+
+    Layers
+    ------
+    - Background districts: pct_ccpp_gt20km_baseline choropleth (Red-Green)
+    - Baseline facilities (SUSALUD-confirmed, blue markers)
+    - Alternative facilities not in baseline (structural-only, orange markers)
+    - Both marker layers are toggleable via LayerControl
+
+    Q1 + Q2 answered interactively: shows WHERE facilities exist in the context
+    of spatial isolation, exposing coverage gaps — districts with high isolation
+    AND few/no markers are the hardest to serve. The two marker layers reveal
+    which additional facilities the structural definition would include.
+
+    Marker tooltip shows facility name, category, institution type.
+    District tooltip shows % isolation and district UBIGEO.
+    """
+    gdf = _prep_for_folium(master)
+
+    # Continuous colormap for pct_ccpp_gt20km (0-100)
+    pct_cmap = bcm.LinearColormap(
+        colors=["#1a9641", "#ffffbf", "#d7191c"],
+        vmin=0, vmax=100,
+        caption="% populated centers > 20 km from nearest emergency facility",
+    )
+
+    m = folium.Map(location=PERU_CENTER, zoom_start=5,
+                   tiles="CartoDB positron", control_scale=True)
+
+    # ── District background ───────────────────────────────────────────────────
+    folium.GeoJson(
+        data=gdf.to_json(),
+        style_function=lambda feat: {
+            "fillColor": (
+                pct_cmap(feat["properties"]["pct_ccpp_gt20km_baseline"])
+                if feat["properties"]["pct_ccpp_gt20km_baseline"] >= 0
+                else "#dddddd"
+            ),
+            "fillOpacity": 0.65,
+            "color": "white",
+            "weight": 0.3,
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=["ubigeo", "pct_ccpp_gt20km_baseline", "n_emergency_active"],
+            aliases=["UBIGEO:", "% CCPP > 20 km:", "Emergency facilities (baseline):"],
+            sticky=True, style="font-size:12px;",
+        ),
+        name="District — % CCPP > 20 km (spatial access gap)",
+        show=True,
+    ).add_to(m)
+    pct_cmap.add_to(m)
+
+    # ── Emergency facility markers ────────────────────────────────────────────
+    confirmed_ids  = set(facility_annual["co_ipress"].unique())
+    ipress_valid   = ipress[ipress["coords_valid"]].copy()
+    baseline_fac   = ipress_valid[ipress_valid["codigo_unico"].isin(confirmed_ids)]
+    alt_only_fac   = ipress_valid[
+        ipress_valid["categoria"].isin(_EMRG_CATS)
+        & ~ipress_valid["codigo_unico"].isin(confirmed_ids)
+    ]
+
+    def _add_markers(fac_gdf: gpd.GeoDataFrame, layer_name: str,
+                     color: str, fill_color: str, show: bool):
+        fg = folium.FeatureGroup(name=layer_name, show=show)
+        for _, row in fac_gdf.iterrows():
+            folium.CircleMarker(
+                location=[row.geometry.y, row.geometry.x],
+                radius=4,
+                color=color,
+                fill=True,
+                fill_color=fill_color,
+                fill_opacity=0.75,
+                weight=1,
+                tooltip=folium.Tooltip(
+                    f"<b>{row['nombre'][:40]}</b><br>"
+                    f"Category: {row['categoria']}<br>"
+                    f"Type: {row['institucion']}<br>"
+                    f"UBIGEO: {row['ubigeo']}",
+                    sticky=True,
+                ),
+            ).add_to(fg)
+        fg.add_to(m)
+
+    _add_markers(baseline_fac, "Baseline facilities (SUSALUD-confirmed)",
+                 "#1f4e79", "#4393c3", show=True)
+    _add_markers(alt_only_fac, "Alt-only facilities (structural, not in SUSALUD)",
+                 "#7f3300", "#fdae61", show=False)
+
+    folium.LayerControl(collapsed=False).add_to(m)
+    _save_html(m, "map_facilities_access.html")
+
+
+# ── Maps pipeline ─────────────────────────────────────────────────────────────
+
+def run_maps_pipeline():
+    """
+    Generate all 5 geospatial maps for Task 5.
+
+    Static   : map01_hadi_choropleth.png  (Q3)
+               map02_baseline_vs_alternative.png  (Q4)
+               map03_access_gap.png  (Q2)
+    Interactive: map_hadi_explorer.html  (Q3 + Q4)
+                 map_facilities_access.html  (Q1 + Q2)
+
+    Reads  : data/processed/district_master.gpkg
+             data/processed/ipress_clean.gpkg
+             data/processed/susalud_facility_annual.parquet
+    Writes : output/figures/map0*.png
+             output/figures/map_*.html
+    """
+    print("\n=== Task 5 — Geospatial Maps ===\n")
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("  Loading data...")
+    master          = gpd.read_file(PROCESSED_DIR / "district_master.gpkg")
+    ipress          = gpd.read_file(PROCESSED_DIR / "ipress_clean.gpkg")
+    facility_annual = pd.read_parquet(PROCESSED_DIR / "susalud_facility_annual.parquet")
+    print(f"  Master: {len(master):,} districts | IPRESS: {len(ipress):,}\n")
+
+    print("-- Static maps --")
+    map01_hadi_choropleth(master)
+    map02_baseline_vs_alternative(master)
+    map03_access_gap(master)
+
+    print("\n-- Interactive maps --")
+    map04_hadi_explorer(master)
+    map05_facilities_access(master, ipress, facility_annual)
+
+    print(f"\n  All maps saved to {FIGURES_DIR}")
 
 
 if __name__ == "__main__":
