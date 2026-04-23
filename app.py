@@ -16,10 +16,11 @@ from datetime import datetime
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-ROOT        = Path(__file__).resolve().parent
-FIGURES_DIR = ROOT / "output" / "figures"
-TABLES_DIR  = ROOT / "output" / "tables"
-HADI_CSV    = TABLES_DIR / "district_hadi.csv"
+ROOT          = Path(__file__).resolve().parent
+FIGURES_DIR   = ROOT / "output" / "figures"
+TABLES_DIR    = ROOT / "output" / "tables"
+HADI_CSV      = TABLES_DIR / "district_hadi.csv"
+DISTRITOS_SHP = ROOT / "data" / "raw" / "DISTRITOS.shp"
 
 ASSIGNMENT_URL = "https://github.com/d2cml-ai/Data-Science-Python/issues/168"
 
@@ -55,6 +56,24 @@ SHIFT_PALETTE = {
 # ── Data loaders ──────────────────────────────────────────────────────────────
 
 @st.cache_data
+def load_ubigeo_names() -> pd.DataFrame:
+    """UBIGEO → (distrito, provincia) from raw DISTRITOS shapefile (authoritative;
+    covers all 1,873 districts). HADI CSV has ~42 % NaN for these fields."""
+    if not DISTRITOS_SHP.exists():
+        return pd.DataFrame(columns=["ubigeo", "shp_distrito", "shp_provincia"])
+    # Read attribute-only (no geometry) for speed.
+    import geopandas as gpd
+    names = gpd.read_file(DISTRITOS_SHP, columns=["IDDIST", "DISTRITO", "PROVINCIA"], ignore_geometry=True)
+    names = names.rename(columns={
+        "IDDIST":    "ubigeo",
+        "DISTRITO":  "shp_distrito",
+        "PROVINCIA": "shp_provincia",
+    })
+    names["ubigeo"] = names["ubigeo"].astype(str).str.zfill(6)
+    return names[["ubigeo", "shp_distrito", "shp_provincia"]]
+
+
+@st.cache_data
 def load_hadi() -> pd.DataFrame:
     df = pd.read_csv(HADI_CSV, dtype={"ubigeo": str})
 
@@ -64,11 +83,15 @@ def load_hadi() -> pd.DataFrame:
 
     df["quintile_shift"] = pd.to_numeric(df["quintile_shift"], errors="coerce")
 
-    # District label — never render "None". ~42 % of rows have null
-    # distrito / provincia (source-data gap, mostly Amazon districts).
-    # Fallback: "{Department} · UBIGEO {code}" keeps rows identifiable.
-    dist = df.get("distrito", pd.Series(index=df.index, dtype="object"))
-    prov = df.get("provincia", pd.Series(index=df.index, dtype="object"))
+    # Fill missing distrito/provincia from the authoritative shapefile.
+    names = load_ubigeo_names()
+    df = df.merge(names, on="ubigeo", how="left")
+    dist = df["distrito"].fillna(df["shp_distrito"])
+    prov = df["provincia"].fillna(df["shp_provincia"])
+    df = df.drop(columns=["shp_distrito", "shp_provincia"])
+
+    # District label — prefer real names; fall back to "{Department} · UBIGEO {code}"
+    # only for the (rare) rows missing from the shapefile.
     has_name = dist.notna() & prov.notna()
     named = (
         dist.fillna("").astype(str).str.title() + ", " +
