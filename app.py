@@ -57,19 +57,33 @@ SHIFT_PALETTE = {
 @st.cache_data
 def load_hadi() -> pd.DataFrame:
     df = pd.read_csv(HADI_CSV, dtype={"ubigeo": str})
-    df["dept_name"] = df["iddpto"].map(DEPT_NAMES).fillna(df["iddpto"].astype(str))
+
+    # Department name — robust to int/str iddpto encodings in the CSV.
+    iddpto_int = pd.to_numeric(df["iddpto"], errors="coerce").astype("Int64")
+    df["dept_name"] = iddpto_int.map(DEPT_NAMES).fillna(df["iddpto"].astype(str))
+
     df["quintile_shift"] = pd.to_numeric(df["quintile_shift"], errors="coerce")
-    if "distrito" in df.columns:
-        df["district_label"] = (
-            df["distrito"].str.title() + ", " +
-            df["provincia"].str.title() + " (" +
-            df["dept_name"] + ")"
-        )
-    else:
-        df["district_label"] = df["ubigeo"]
+
+    # District label — never render "None". ~42 % of rows have null
+    # distrito / provincia (source-data gap, mostly Amazon districts).
+    # Fallback: "{Department} · UBIGEO {code}" keeps rows identifiable.
+    dist = df.get("distrito", pd.Series(index=df.index, dtype="object"))
+    prov = df.get("provincia", pd.Series(index=df.index, dtype="object"))
+    has_name = dist.notna() & prov.notna()
+    named = (
+        dist.fillna("").astype(str).str.title() + ", " +
+        prov.fillna("").astype(str).str.title() + " (" + df["dept_name"] + ")"
+    )
+    fallback = df["dept_name"] + " · UBIGEO " + df["ubigeo"]
+    df["district_label"] = np.where(has_name, named, fallback)
+
     df["dist_median_km"] = df["dist_median_m_baseline"] / 1000
-    df["rank_hadi_baseline"] = df["hadi_baseline"].rank(method="min", ascending=True).astype("Int64")
-    df["rank_hadi_alternative"] = df["hadi_alternative"].rank(method="min", ascending=True).astype("Int64")
+    df["rank_hadi_baseline"] = (
+        df["hadi_baseline"].rank(method="min", ascending=True).astype("Int64")
+    )
+    df["rank_hadi_alternative"] = (
+        df["hadi_alternative"].rank(method="min", ascending=True).astype("Int64")
+    )
     return df
 
 
