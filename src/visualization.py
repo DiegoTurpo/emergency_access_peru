@@ -1038,3 +1038,4 @@ def run_maps_pipeline():
 
 if __name__ == "__main__":
     run_visualization_pipeline()
+    run_maps_pipeline()
