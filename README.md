@@ -103,24 +103,84 @@ pip install streamlit streamlit-folium plotly requests branca
 
 ### Run the pipeline
 
+Each task writes its outputs to `data/processed/` or `output/`; run them in order.
+
 ```bash
-# Task 1 — Data cleaning
-conda run -n homework2 python -c "
-import sys; sys.path.insert(0,'.')
-from src.cleaning import run_cleaning_pipeline
-run_cleaning_pipeline()
-"
+# Task 1 — Data cleaning  →  data/processed/*.gpkg + *.parquet
+conda run -n homework2 python -m src.cleaning
 
-# Task 2 — Geospatial integration
-conda run -n homework2 python -c "
-import sys; sys.path.insert(0,'.')
-from src.geospatial import run_geospatial_pipeline
-run_geospatial_pipeline()
-"
+# Task 2 — Geospatial integration  →  district_master.gpkg, ccpp_with_distances.gpkg
+conda run -n homework2 python -m src.geospatial
 
-# Streamlit app
+# Task 3 — HADI metrics  →  district_master.gpkg (enriched), district_hadi.csv
+conda run -n homework2 python -m src.metrics
+
+# Task 4 — Static figures  →  output/figures/fig01_*.png … fig06_*.png
+conda run -n homework2 python -m src.visualization
+
+# Streamlit app (Tasks 5 & 6)
 conda run -n homework2 streamlit run app.py
 ```
+
+---
+
+## Static Visualizations (Task 4)
+
+Six figures in `output/figures/`, each answering one or more analytical questions:
+
+---
+
+### fig01 — Emergency facility supply distribution
+**Answers:** Q1 (facility availability across districts)
+
+Histogram of SUSALUD-confirmed emergency facilities per district, on a log y-scale.
+
+**Why this chart:** The distributional *shape* is the finding — an extreme right skew with a dominant spike at zero (834 districts, 44.5%, have no emergency facility). A log y-scale keeps both the mass at zero and the long tail visible simultaneously. **Why not a bar chart of top districts:** ranking individual districts buries the dominant story (near-half with zero); the histogram makes the inequality structural rather than anecdotal.
+
+---
+
+### fig02 — Facility count vs emergency care activity
+**Answers:** Q1 (both the facility and activity sub-dimensions, and their relationship)
+
+Scatter of log(n\_emergency\_active + 1) vs log(SUSALUD emergency visits + 1), coloured by HADI quintile, with an OLS trend line.
+
+**Why this chart:** A scatter is the only chart type that simultaneously shows *both* Q1 dimensions and reveals the relationship between them. The log1p transform compresses the 0–262k range while keeping zero-valued districts at the origin (a visible cluster, not hidden by the axis). The OLS slope (2.6) confirms a positive association but the wide vertical scatter shows that many districts with few facilities still record high activity — and vice versa — exposing SUSALUD reporting gaps. **Why not two separate histograms:** they lose the joint relationship and the quintile colouring that links this chart back to Task 3.
+
+---
+
+### fig03 — Spatial access: national distribution + geographic pattern
+**Answers:** Q2 (which districts have weaker spatial access to emergency services)
+
+Two panels: (A) histogram of % populated centres more than 20 km from the nearest facility; (B) horizontal box plots of median CCPP distance by department, sorted by median.
+
+**Why this chart:** Panel A shows the national distribution shape — zero-inflated, with 1,188 perfectly well-served districts and 125 districts where *all* populated centres exceed 20 km. Panel A alone cannot say *where* the isolation is concentrated; Panel B adds the geographic dimension without needing a map (Task 5). Together they answer Q2 more fully than either alone. **Why not a per-district sorted bar:** 1,873 bars are unreadable; the department grouping reveals the Amazonian cluster (Loreto, Madre de Dios, Ucayali) as the structural geographic driver.
+
+---
+
+### fig04 — HADI score distribution: baseline vs alternative
+**Answers:** Q3 (overall deprivation spectrum) + Q4 (how robust is the index?)
+
+Histogram of baseline HADI with quintile bands as background shading; overlaid KDE curves for baseline (solid) and alternative (dashed).
+
+**Why this chart:** The dual KDE is the most direct way to compare two continuous distributions on the same scale. The bands make the quintile membership visually immediate. The notable spike near 0.6 corresponds to the large cluster of districts that have zero facilities and zero SUSALUD activity but whose populated centres happen to lie within 20 km of a neighbouring district's facility — a finding about *structural* vs *spatial* underservice. The alternative KDE shifts rightward above 0.6, confirming that the stricter facility definition (1,854 vs 3,093) reclassifies a subset of districts as more deprived. **Why not two separate histograms:** comparing peaks and tails across two panels requires more cognitive work than a single overlay.
+
+---
+
+### fig05 — HADI components by quintile
+**Answers:** Q3 (methodology — what drives the classification?)
+
+Grouped bar chart: mean component score (Facility Density, Emergency Activity, Spatial Access) for each HADI quintile.
+
+**Why this chart:** A grouped bar chart is the clearest way to read absolute values across an ordinal axis with three categories. The key finding — that spatial access (green) is *lower* in Q3 than facility and activity components, but overtakes them in Q4–Q5 — is immediately visible and would be hidden in a radar chart (distorted area perception) or a heatmap (requires colour interpretation for numeric comparison). The 0.5 reference line (national average by construction) contextualises each bar. **Why not a radar/spider chart:** radar distorts relative magnitudes and is harder to read for five groups simultaneously.
+
+---
+
+### fig06 — Sensitivity: baseline vs alternative HADI
+**Answers:** Q4 (comparison between specifications)
+
+Scatter of HADI baseline (x) vs HADI alternative (y), coloured by quintile shift (-3 to +3), with a y = x reference diagonal.
+
+**Why this chart:** A scatter on the same scale with a y = x reference is the most direct way to visualise agreement vs disagreement between two continuous scores. Points on the diagonal are unchanged; points above it are reclassified as more deprived under the alternative. Colouring by the magnitude of shift adds the quintile dimension without requiring a separate confusion matrix. The result — most districts cluster tightly on the diagonal, but a visible off-diagonal cloud shifts upward (555 districts worsened by 1 quintile) — quantifies the sensitivity as modest but non-negligible. **Why not a cross-tab alone:** a confusion matrix of 5×5 quintile transitions loses the continuous HADI information and hides which specific score ranges disagree most.
 
 ---
 
