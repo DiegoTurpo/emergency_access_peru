@@ -184,6 +184,61 @@ Scatter of HADI baseline (x) vs HADI alternative (y), coloured by quintile shift
 
 ---
 
+## Geospatial Maps (Task 5)
+
+Five map outputs in `output/figures/` — three static (GeoPandas/matplotlib) and two interactive (Folium):
+
+---
+
+### map01 — HADI Quintile Choropleth *(static)*
+**Answers:** Q3 — Which districts are most underserved overall?
+
+Full-Peru choropleth of HADI baseline quintile (Q1=blue → Q5=red) with white department boundary overlay and a legend showing district counts per quintile.
+
+**Why this chart:** A choropleth is the only type that simultaneously answers WHICH districts are deprived AND WHERE they are. The map reveals a clear coastal–Amazonian divide: Q1 districts (best served) cluster along the Pacific coast and in Lima; Q5 districts concentrate in Loreto, Ucayali, and Amazonas — a geographic pattern invisible in any statistical chart. **Alternative rejected:** dot density map adds visual noise without revealing the polygon-level administrative structure used in resource allocation decisions.
+
+---
+
+### map02 — Baseline vs Alternative Side-by-Side *(static)*
+**Answers:** Q4 — Where does the facility definition change the classification?
+
+Two panels at identical scale: left = baseline (3,093 SUSALUD-confirmed facilities), right = alternative (1,854 structural). Same colour scale enables direct visual comparison.
+
+**Why this chart:** A side-by-side map externalises the cognitive comparison — the reader scans for colour changes without needing to subtract values mentally. The alternative panel shows a notable darkening of the Amazon interior (fewer qualifying facilities → higher deprivation) and some lightening of the highlands (structural category captures facilities not in SUSALUD). **Alternative rejected:** a single "difference" map (showing quintile shift) loses the absolute deprivation level, which is the primary policy-relevant quantity.
+
+---
+
+### map03 — Spatial Access Gap *(static)*
+**Answers:** Q2 — Which districts have populated centers far from emergency care?
+
+Continuous choropleth of `pct_ccpp_gt20km_baseline` (% of populated centers beyond 20 km from the nearest emergency facility). White/green = well-covered; red = fully isolated.
+
+**Why this chart:** A continuous graduated scale preserves the full gradient of spatial isolation and avoids arbitrary discretisation. The access gap map reveals a distinct spatial pattern from the HADI composite: several Q3 districts (moderate overall deprivation) show deep red — they have facilities nearby in aggregate but their populated centers are scattered far from them. This decoupling of supply shortage and spatial isolation is only visible by mapping the components separately. **Alternative rejected:** using only the HADI map (map01) conflates the access component with the supply and activity components.
+
+---
+
+### map_hadi_explorer — Interactive HADI explorer *(Folium)*
+**Answers:** Q3 + Q4 interactively
+
+- **Layer 1 (default):** Baseline HADI quintile choropleth — hover any district to see UBIGEO, quintile, HADI score, emergency facility count, % CCPP > 20 km, median distance, and SUSALUD visits.
+- **Layer 2 (toggle):** Alternative HADI quintile — same tooltip for the alternative specification.
+- **Layer control** (top-right ≡): switch between specifications to observe reclassification in geographic context.
+
+This map lets the Streamlit reader drill into any district of interest; static maps cannot show six simultaneous metrics per district.
+
+---
+
+### map_facilities_access — Facility locations on access background *(Folium)*
+**Answers:** Q1 + Q2 interactively
+
+- **Background:** `pct_ccpp_gt20km_baseline` choropleth (green = well-covered, red = isolated).
+- **Blue markers (default on):** 3,093 SUSALUD-confirmed emergency facilities — hover for name, category, institution type.
+- **Orange markers (toggle):** Structural-only facilities (category ≥ I-3 but NOT in SUSALUD data) — shows the additional facilities the alternative definition would include.
+
+The visual conjunction of red districts with no blue markers identifies the hardest-to-serve areas — where spatial isolation AND facility absence compound each other.
+
+---
+
 ## Cleaning Decisions
 
 See [`output/tables/cleaning_report.md`](output/tables/cleaning_report.md) for a full record of every filtering step applied to each dataset, including row counts before and after each decision.
