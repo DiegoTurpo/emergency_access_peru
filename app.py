@@ -112,6 +112,20 @@ def show_figure(path: Path):
         )
 
 
+def safe_int(value, missing: str = "—") -> str:
+    """Render int as string; return placeholder when NaN. Prevents int(NaN) crashes."""
+    if pd.isna(value):
+        return missing
+    return f"{int(value):,}"
+
+
+def safe_float(value, fmt: str = "{:.3f}", missing: str = "—") -> str:
+    """Render float with a format spec; return placeholder when NaN."""
+    if pd.isna(value):
+        return missing
+    return fmt.format(value)
+
+
 @st.cache_data
 def compute_kpis(df: pd.DataFrame) -> dict:
     """All dynamic counts/rates used in markdown narratives across tabs."""
@@ -295,13 +309,50 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.header("Data & Methodology")
 
+    # ── TL;DR — one-line answers + where to find the detail ──────────────────
+    st.success(
+        "**TL;DR — one-line answers to each research question**  \n"
+        f"**Q1.** {kpis['n_zero_facility_baseline']:,} of {kpis['n_districts']:,} districts "
+        f"({kpis['pct_zero_facility_baseline']:.1f} %) have **zero** SUSALUD-confirmed "
+        "emergency facilities; Lima / Arequipa / Callao concentrate most activity.  \n"
+        f"**Q2.** {kpis['n_ccpp_100pct_isolated']:,} districts have **100 %** of their "
+        "populated centers beyond 20 km from the nearest emergency facility (worst: Loreto, "
+        "Madre de Dios, Ucayali).  \n"
+        f"**Q3.** {kpis['n_q5_baseline']:,} districts fall in Q5 (most deprived); "
+        f"{kpis['n_q1_baseline']:,} in Q1 (best served) under the baseline definition.  \n"
+        f"**Q4.** {kpis['n_shift_unchanged']:,} districts "
+        f"({kpis['pct_shift_unchanged']:.0f} %) are stable across definitions; "
+        f"{kpis['n_shift_worse']:,} worsen, {kpis['n_shift_better']:,} improve under the "
+        "alternative."
+    )
+
     st.info(
-        "**How each research question is answered:**  \n"
+        "**Where to look for each answer**  \n"
         "**Q1** (facility availability) → Tab 2: Figs 1 & 2 + ranking tables  \n"
         "**Q2** (spatial access) → Tab 2: Fig 3 · Tab 3: Map 3  \n"
         "**Q3** (overall deprivation) → Tab 2: Figs 4 & 5 · Tab 3: Map 1 + drill-down  \n"
         "**Q4** (sensitivity) → Tab 2: Fig 6 · Tab 3: Map 2 · Tab 4: confusion matrix + scatter"
     )
+
+    with st.expander("📖 Glossary — acronyms and terms used throughout the app"):
+        st.markdown(
+            """
+            | Term | Meaning |
+            |------|---------|
+            | **UBIGEO** | 6-digit INEI code uniquely identifying a Peruvian district (dept + prov + dist). |
+            | **CCPP** | *Centro Poblado* — populated center. A named human settlement with coordinates. |
+            | **IPRESS** | *Institución Prestadora de Servicios de Salud* — SUSALUD's registry of all healthcare facilities. |
+            | **SUSALUD** | National healthcare superintendency. Publishes emergency care production records. |
+            | **MINSA** | Ministerio de Salud — publisher of the IPRESS facility registry. |
+            | **INEI** | National statistics agency — publisher of CCPP and district shapefiles. |
+            | **HADI** | Healthcare Access Deprivation Index (this project's composite). ∈ [0,1], higher = worse. |
+            | **Quintile** | Equal-interval bin on HADI. Q1 = best served, Q5 = most deprived. |
+            | **Baseline definition** | Facility counts only if the IPRESS appears in SUSALUD emergency records. |
+            | **Alternative definition** | Facility counts all structural IPRESS with category ≥ I-3, whether reporting or not. |
+            | **EPSG:4326** | WGS-84 geographic CRS (degrees). Used for storage and Folium maps. |
+            | **EPSG:24891** | PSAD56 / Peru Central Zone projected CRS (metres). Used for distance/area math. |
+            """
+        )
 
     st.subheader("Problem Statement")
     st.markdown(
@@ -923,57 +974,69 @@ with tab3:
     sel_label = st.selectbox("Select a district", labels_sorted, key="drill_down_select")
     row = df.loc[df["district_label"] == sel_label].iloc[0]
 
+    # Some 3 districts (Mi Perú + two Puno UBIGEOs) have no CCPP / HADI data —
+    # render placeholders instead of crashing on int(NaN).
+    has_hadi = pd.notna(row["hadi_baseline"])
+
     dd_c1, dd_c2, dd_c3 = st.columns(3)
     with dd_c1:
         st.markdown("**HADI Profile**")
+        delta_val = row["hadi_alternative"] - row["hadi_baseline"]
         st.metric(
             "HADI (Baseline)",
-            f"{row['hadi_baseline']:.3f}",
-            delta=f"{row['hadi_alternative'] - row['hadi_baseline']:+.3f} vs Alt",
+            safe_float(row["hadi_baseline"]),
+            delta=(f"{delta_val:+.3f} vs Alt" if pd.notna(delta_val) else None),
             delta_color="inverse",
         )
-        st.metric("Quintile (Baseline)",   str(row["hadi_quintile_baseline"]))
+        st.metric("Quintile (Baseline)",    str(row["hadi_quintile_baseline"]))
         st.metric("Quintile (Alternative)", str(row["hadi_quintile_alternative"]))
         shift_val = row["quintile_shift"]
-        shift_str = "unchanged" if pd.isna(shift_val) or shift_val == 0 else (
-            f"+{int(shift_val)} (more deprived under Alt)" if shift_val > 0 else
-            f"{int(shift_val)} (less deprived under Alt)"
-        )
+        if pd.isna(shift_val):
+            shift_str = "unavailable (insufficient data)"
+        elif shift_val == 0:
+            shift_str = "unchanged"
+        elif shift_val > 0:
+            shift_str = f"+{int(shift_val)} (more deprived under Alt)"
+        else:
+            shift_str = f"{int(shift_val)} (less deprived under Alt)"
         st.caption(f"Sensitivity: **{shift_str}**")
 
     with dd_c2:
         st.markdown("**District Facts**")
-        st.metric("Emergency facilities (Base)", f"{int(row['n_emergency_active'])}")
+        st.metric("Emergency facilities (Base)", safe_int(row["n_emergency_active"]))
+        diff_fac = row["n_emergency_structural"] - row["n_emergency_active"]
         st.metric(
             "Structural facilities (Alt)",
-            f"{int(row['n_emergency_structural'])}",
-            delta=f"{int(row['n_emergency_structural'] - row['n_emergency_active']):+d}",
+            safe_int(row["n_emergency_structural"]),
+            delta=(f"{int(diff_fac):+d}" if pd.notna(diff_fac) else None),
         )
-        st.metric("Populated centers",  f"{int(row['n_ccpp_baseline'])}")
-        st.metric("Beds",                f"{int(row['camas_total'])}")
-        pub, priv = int(row["n_public"]), int(row["n_private"])
+        st.metric("Populated centers", safe_int(row["n_ccpp_baseline"]))
+        st.metric("Beds",              safe_int(row["camas_total"]))
+        pub  = safe_int(row["n_public"])
+        priv = safe_int(row["n_private"])
         st.caption(f"Public / Private: **{pub} / {priv}**")
 
     with dd_c3:
         st.markdown("**National Ranks**")
+        total = f"{kpis['n_districts']:,}"
         st.metric(
             "HADI Baseline rank",
-            f"{int(row['rank_hadi_baseline'])} / {kpis['n_districts']:,}",
+            (f"{safe_int(row['rank_hadi_baseline'])} / {total}"
+             if has_hadi else "—"),
             help="1 = best served, higher = more deprived",
         )
         st.metric(
             "HADI Alternative rank",
-            f"{int(row['rank_hadi_alternative'])} / {kpis['n_districts']:,}",
+            (f"{safe_int(row['rank_hadi_alternative'])} / {total}"
+             if has_hadi else "—"),
         )
-        median_dist = row["dist_median_km"]
-        pct20       = row["pct_ccpp_gt20km_baseline"]
         st.metric(
             "Median distance to facility",
-            f"{median_dist:.1f} km" if pd.notna(median_dist) else "—",
+            safe_float(row["dist_median_km"], fmt="{:.1f} km"),
         )
         st.metric(
             "% CCPP > 20 km from facility",
-            f"{pct20:.1f} %" if pd.notna(pct20) else "—",
+            safe_float(row["pct_ccpp_gt20km_baseline"], fmt="{:.1f} %"),
         )
 
     st.markdown("**5 most similar districts (by Baseline HADI score)**")
