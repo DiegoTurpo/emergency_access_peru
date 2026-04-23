@@ -4,23 +4,53 @@ Geospatial analysis of emergency healthcare access across 1,873 Peruvian distric
 
 ---
 
+## What Does This Project Do?
+
+This project builds a **complete geospatial analytics pipeline** in Python to study emergency healthcare access inequality across all districts in Peru. It ingests four public datasets, cleans and integrates them spatially, constructs a composite deprivation index (HADI), produces static and interactive visualizations, and presents the full analysis in a Streamlit web application.
+
+---
+
+## Main Analytical Goal
+
+> **Which districts in Peru appear relatively better or worse served in emergency healthcare access, and what evidence supports that conclusion?**
+
+The project answers four specific research questions:
+
+| # | Question |
+|---|----------|
+| **Q1** | Which districts have lower or higher availability of health facilities and emergency care activity? |
+| **Q2** | Which districts have populated centers with weaker spatial access to emergency services? |
+| **Q3** | Which districts are most and least underserved when combining all dimensions? |
+| **Q4** | How sensitive are the results to the choice of facility definition? |
+
+---
+
 ## Project Structure
 
 ```
 emergency_access_peru/
-├── app.py                      # Streamlit application (4 tabs)
-├── requirements.txt
+├── app.py                          # Streamlit application (4 tabs)
+├── requirements.txt                # Python dependencies
+├── README.md
+│
 ├── src/
-│   ├── data_loader.py          # Raw file ingestion
-│   ├── cleaning.py             # Cleaning pipeline + CleaningLog
-│   ├── geospatial.py           # Task 2 — spatial joins and distance metrics
-│   └── utils.py                # Encoding detection, UBIGEO padding
+│   ├── data_loader.py              # Raw file ingestion (one loader per dataset)
+│   ├── cleaning.py                 # Cleaning pipeline + CleaningLog
+│   ├── geospatial.py               # Spatial joins, distance metrics, district_master
+│   ├── metrics.py                  # HADI index construction (Task 3)
+│   ├── visualization.py            # Static charts (Task 4) + maps (Task 5)
+│   └── utils.py                    # Encoding detection, UBIGEO padding
+│
 ├── data/
-│   ├── raw/                    # Source files (IPRESS.csv, DISTRITOS.shp, CCPP zip)
-│   └── processed/              # Outputs: .gpkg and .parquet files
-└── output/
-    └── tables/
-        └── cleaning_report.md  # Auditable cleaning decisions
+│   ├── raw/                        # Source files (IPRESS.csv, DISTRITOS.shp, CCPP zip)
+│   └── processed/                  # Outputs: .gpkg and .parquet files (git-ignored)
+│
+├── output/
+│   ├── figures/                    # Static PNGs (fig01–fig06, map01–map03) + Folium HTML
+│   └── tables/                     # district_hadi.csv, cleaning_report.md, metrics_report.md
+│
+└── video/
+    └── link.txt                    # Link to explanatory video
 ```
 
 ---
@@ -81,17 +111,91 @@ All metrics are stored in `district_master.gpkg` (1,873 rows × 28 columns).
 
 ---
 
-## Key Findings (preliminary)
+## How Were the District-Level Metrics Constructed?
 
-- **834 of 1,873 districts** (45%) have no SUSALUD-confirmed emergency facility within their boundaries.
+The district-level analytical output is the **HADI — Healthcare Access Deprivation Index** (Task 3, `src/metrics.py`).
+
+### Index Design
+
+HADI ∈ [0, 1]; **higher score = more deprived**. It combines three equal-weight components:
+
+| Component | Variable | Deprivation direction |
+|-----------|----------|-----------------------|
+| **C1 — Facility Density** | Emergency facilities per 100 populated centers | Fewer facilities → higher deprivation |
+| **C2 — Emergency Activity** | SUSALUD emergency visits per populated center | Fewer visits → higher deprivation |
+| **C3 — Spatial Access** | % populated centers > 20 km from nearest emergency facility | Higher isolation → higher deprivation |
+
+### Normalization
+
+Each component is **percentile-ranked** and rescaled to [0, 1]:
+
+```
+rank_i = (rank(x_i) - 1) / (n - 1)
+```
+
+Percentile rank was chosen over min-max scaling because the activity distribution is extremely right-skewed (median = 0, max = 262,245 visits). Min-max would compress 99% of districts into a tiny band near zero.
+
+### Composite Score
+
+```
+HADI = (C1 + C2 + C3) / 3
+```
+
+### Quintile Classification
+
+Districts are classified into five quintiles using **equal-interval bins** [0, 0.2, 0.4, 0.6, 0.8, 1.0]:
+
+| Quintile | HADI range | Interpretation |
+|----------|------------|----------------|
+| Q1 (Best) | 0.0 – 0.2 | Best-served districts |
+| Q2        | 0.2 – 0.4 | Above-average access |
+| Q3        | 0.4 – 0.6 | Moderate deprivation |
+| Q4        | 0.6 – 0.8 | High deprivation |
+| Q5 (Worst)| 0.8 – 1.0 | Most deprived districts |
+
+Equal-interval bins were chosen over equal-frequency (`qcut`) because many districts tie at the same HADI score (e.g., all districts with zero facilities and zero activity), which causes `qcut` to produce highly unequal quintiles.
+
+### Two Specifications (Q4)
+
+| Specification | Facility definition | n facilities |
+|---------------|---------------------|--------------|
+| **Baseline** | Confirmed in SUSALUD emergency records + valid GPS | 3,093 |
+| **Alternative** | Structural category ≥ I-3, regardless of SUSALUD reporting | 1,854 |
+
+The baseline captures **observed** emergency activity; the alternative captures **structural capacity** regardless of reporting compliance. Both are computed in parallel and compared via a quintile-shift analysis.
+
+---
+
+## Key Findings
+
+**Q1 — Territorial availability**
+- **834 of 1,873 districts** (44.5%) have no SUSALUD-confirmed emergency facility within their boundaries.
+- The most facility-rich district is **Cutervo (Cajamarca)** with 47 emergency facilities.
+- The highest emergency care activity is in **Ica** with 262,245 SUSALUD visits — despite having only 5 confirmed facilities, revealing a major reporting gap.
+
+**Q2 — Settlement access**
 - **National median distance** from a populated center to the nearest emergency facility: **6.5 km** (baseline).
-- Worst-case distance reaches **341 km**, concentrated in remote Amazonian districts.
+- **125 districts** (7%) have 100% of their populated centers beyond 20 km from any facility.
+- The most isolated district is **Purus (Ucayali)** with a median distance of **231.8 km** to the nearest facility.
+- Loreto, Madre de Dios, and Ucayali account for the bulk of spatial isolation.
+
+**Q3 — Overall deprivation (HADI)**
+- **134 districts** fall in Q5 (most deprived), concentrated in Loreto, Ucayali, and Amazonas.
+- **150 districts** fall in Q1 (best served), concentrated in Lima, Callao, and Arequipa metropolitan areas.
+- The worst-scoring districts (HADI ≈ 0.813): Tigre, Purus, Yaguas, Alto Nanay, Yavari — all remote Amazonian districts with zero facilities and 100% of CCPP beyond 20 km.
+- The best-scoring district: **Lima** (HADI = 0.106).
+
+**Q4 — Methodological sensitivity**
+- **848 districts** (45%) are unchanged between baseline and alternative definitions.
+- **555 districts** (30%) worsen by 1 quintile under the alternative — the stricter structural definition excludes SUSALUD-reporting facilities.
+- **5 districts** shift by 3 quintiles (e.g., Cahuacho, Arequipa: Q2 → Q5).
+- The alternative definition is most impactful for districts near the Q2/Q3 boundary that relied on facilities not reporting to SUSALUD.
 
 ---
 
 ## Setup & Execution
 
-### Environment
+### How to Install the Dependencies
 
 ```bash
 conda create -n homework2 python=3.11
@@ -101,9 +205,9 @@ conda install -n homework2 -c conda-forge \
 pip install streamlit streamlit-folium plotly requests branca
 ```
 
-### Run the pipeline
+### How to Run the Processing Pipeline
 
-Each task writes its outputs to `data/processed/` or `output/`; run them in order.
+Each task writes its outputs to `data/processed/` or `output/`; run them in order:
 
 ```bash
 # Task 1 — Data cleaning  →  data/processed/*.gpkg + *.parquet
@@ -115,12 +219,31 @@ conda run -n homework2 python -m src.geospatial
 # Task 3 — HADI metrics  →  district_master.gpkg (enriched), district_hadi.csv
 conda run -n homework2 python -m src.metrics
 
-# Task 4 — Static figures  →  output/figures/fig01_*.png … fig06_*.png
+# Task 4 & 5 — Static figures and maps  →  output/figures/
 conda run -n homework2 python -m src.visualization
+```
 
-# Streamlit app (Tasks 5 & 6)
+### How to Run the Streamlit App
+
+```bash
 conda run -n homework2 streamlit run app.py
 ```
+
+The app opens at **http://localhost:8501** and contains 4 tabs:
+- **Tab 1 — Data & Methodology**: problem statement, data sources, cleaning decisions, HADI methodology, limitations.
+- **Tab 2 — Static Analysis**: 6 figures answering Q1–Q4, with inline key findings and named district rankings.
+- **Tab 3 — GeoSpatial Results**: 3 static maps + department-level summary table and Q5 bar chart.
+- **Tab 4 — Interactive Exploration**: Folium maps (hover any district), district search/filter table, baseline vs alternative scatter, HADI component chart.
+
+---
+
+## Main Limitations
+
+- **Reporting gap**: SUSALUD data only covers facilities that voluntarily submitted records. The 834 districts with zero confirmed facilities may still have informal emergency services that are not captured.
+- **Static snapshot**: metrics use the latest available SUSALUD year per district, which varies from 2018 to 2026 depending on when each district last reported.
+- **Euclidean distance**: straight-line distances from populated centers to facilities do not account for road network quality, river-crossing requirements, or terrain barriers — a critical limitation in Loreto, where river access is the only viable route.
+- **CCPP as population proxy**: populated centers are counted equally regardless of actual population size. A large city and a hamlet of 10 people are treated identically in the access metrics.
+- **Structural facility definition**: the alternative definition uses registered category (≥ I-3) as a proxy for emergency capability, but registration does not guarantee that a facility is actually operational or adequately staffed.
 
 ---
 
