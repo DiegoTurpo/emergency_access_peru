@@ -64,6 +64,25 @@
 | `n_ipress_reportantes` | int | Number of distinct facilities that reported activity that year |
 
 **Source:** SUSALUD — http://datos.susalud.gob.pe (Consulta C1 — Producción Asistencial en Emergencia)  
+**Official column definitions** (from `data/raw/Diccionario_Datos_TABLA_C1.xlsx`):
+
+| Raw column | Description |
+|---|---|
+| `ANHO` | Año (year) |
+| `MES` | Mes (month) |
+| `UBIGEO` | Código de Ubigeo |
+| `DEPARTAMENTO` | Nombre Departamento |
+| `PROVINCIA` | Nombre Provincia |
+| `DISTRITO` | Nombre Distrito |
+| `SECTOR` | Sector al que pertenece la IPRESS |
+| `CATEGORIA` | Categoría de la IPRESS |
+| `CO_IPRESS` | Código RENIPRESS |
+| `RAZON_SOC` | Razón Social del Establecimiento |
+| `TIPO_SEXO` | Tipo de Sexo del Paciente: 1=Hombre, 2=Mujer |
+| `GRUPO_EDAD` | Grupo de edad (1=<1 año, 2=1–4, 3=5–9, …, 15=65+) |
+| `NRO_TOTAL_ATENCIONES` | Número total de atenciones realizadas por cualquier profesional de la salud |
+| `NRO_TOTAL_ATENDIDOS` | Número total de personas atendidas en el mes por cualquier profesional de la salud |
+
 **Cleaning decisions:**
 - Rows where `total_atenciones ∈ {NE_0001, NE_0002}` are non-reporters (facility did not submit disaggregated data). Dropped before aggregation to avoid counting them as zeros.
 - Data is originally disaggregated by sex × age × month. Aggregated upward to facility × year and district × year.
