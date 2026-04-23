@@ -51,10 +51,8 @@ SHIFT_PALETTE = {
 @st.cache_data
 def load_hadi() -> pd.DataFrame:
     df = pd.read_csv(TABLES_DIR / "district_hadi.csv", dtype={"ubigeo": str})
-    # Accent-correct department names from the numeric IDDPTO code
     df["dept_name"] = df["iddpto"].map(DEPT_NAMES).fillna(df["iddpto"].astype(str))
     df["quintile_shift"] = pd.to_numeric(df["quintile_shift"], errors="coerce")
-    # Human-readable label: "Distrito, Provincia (Departamento)"
     if "distrito" in df.columns:
         df["district_label"] = (
             df["distrito"].str.title() + ", " +
@@ -63,19 +61,30 @@ def load_hadi() -> pd.DataFrame:
         )
     else:
         df["district_label"] = df["ubigeo"]
-    # Distance in km for display
     df["dist_median_km"] = df["dist_median_m_baseline"] / 1000
     return df
 
 
 @st.cache_data
 def load_markdown(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else f"*(file not found: {path.name})*"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return f"*(file not found: {path.name})*"
 
 
 @st.cache_data
 def load_folium_html(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else "<p>Map not found — run the pipeline.</p>"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return "<p>Map not found — run the pipeline.</p>"
+
+
+def show_figure(path: Path):
+    """Display a static figure or a warning if it doesn't exist."""
+    if path.exists():
+        st.image(str(path), use_container_width=True)
+    else:
+        st.warning("Run `conda run -n homework2 python -m src.visualization` to generate figures.")
 
 
 # ── App shell ─────────────────────────────────────────────────────────────────
@@ -92,6 +101,9 @@ st.caption(
     "SUSALUD emergency records 2015–2026 · INEI populated centers"
 )
 
+# Load data once — shared across all tabs
+df = load_hadi()
+
 tab1, tab2, tab3, tab4 = st.tabs([
     "📋 Data & Methodology",
     "📊 Static Analysis",
@@ -106,7 +118,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.header("Data & Methodology")
 
-    # Navigation guide
     st.info(
         "**How each research question is answered:**  \n"
         "**Q1** (facility availability) → Tab 2: Figs 1 & 2 + named rankings  \n"
@@ -164,7 +175,7 @@ with tab1:
     st.markdown(
         """
         - **IPRESS**: kept only `estado == ACTIVADO`; removed 26 duplicate `codigo_unico`.
-        - **SUSALUD**: dropped 237,753 non-reporter rows (`NE_0001/NE_0002`); dropped 502,040 exact grain duplicates.
+        - **SUSALUD**: dropped non-reporter rows (`NE_0001/NE_0002`); dropped exact grain duplicates.
         - **CCPP**: dropped 44 coordinate-duplicate populated centers.
         - **DISTRITOS**: kept the largest polygon per UBIGEO (0 duplicates removed).
         """
@@ -255,13 +266,11 @@ conda run -n homework2 streamlit run app.py""",
 
 with tab2:
     st.header("Static Analysis")
-    _df = load_hadi()
 
     # ── Fig 1 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 1 — Emergency Facility Supply Distribution")
     st.caption("**Q1:** Facility availability across districts")
-    p = FIGURES_DIR / "fig01_supply_distribution.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig01_supply_distribution.png")
     st.success(
         "**Key finding:** 834 districts (44.5%) have **zero** SUSALUD-confirmed emergency facilities. "
         "The distribution is extremely right-skewed — a handful of urban districts concentrate most capacity."
@@ -276,8 +285,7 @@ with tab2:
     # ── Fig 2 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 2 — Facility Count vs Emergency Care Activity")
     st.caption("**Q1:** Joint supply–activity relationship")
-    p = FIGURES_DIR / "fig02_supply_vs_activity.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig02_supply_vs_activity.png")
     st.success(
         "**Key finding:** More facilities correlate with higher activity (OLS slope ≈ 2.6) but the relationship "
         "is weak. Several districts with many facilities report **zero** SUSALUD visits — a reporting compliance gap, "
@@ -293,8 +301,7 @@ with tab2:
     # ── Fig 3 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 3 — Spatial Access: National Distribution + Geographic Pattern")
     st.caption("**Q2:** Which districts have weaker spatial access?")
-    p = FIGURES_DIR / "fig03_spatial_access.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig03_spatial_access.png")
     st.success(
         "**Key finding:** 1,188 districts (63%) have **zero** populated centers beyond 20 km — well served. "
         "But 125 districts (7%) have **all** their populated centers beyond 20 km. "
@@ -310,8 +317,7 @@ with tab2:
     # ── Fig 4 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 4 — HADI Score Distribution: Baseline vs Alternative")
     st.caption("**Q3:** Overall deprivation spectrum · **Q4:** Sensitivity to facility definition")
-    p = FIGURES_DIR / "fig04_hadi_distribution.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig04_hadi_distribution.png")
     st.success(
         "**Key finding:** The alternative KDE shifts rightward above HADI 0.6 — the stricter facility "
         "definition reclassifies 555 districts as one quintile more deprived. "
@@ -327,8 +333,7 @@ with tab2:
     # ── Fig 5 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 5 — HADI Components by Quintile")
     st.caption("**Q3:** What drives the deprivation classification?")
-    p = FIGURES_DIR / "fig05_components_by_quintile.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig05_components_by_quintile.png")
     st.success(
         "**Key finding:** In Q3 districts, spatial access is *lower* than facility/activity components — "
         "moderate-HADI districts can still be physically isolated. In Q4–Q5, all three components "
@@ -344,8 +349,7 @@ with tab2:
     # ── Fig 6 ─────────────────────────────────────────────────────────────────
     st.markdown("### Fig 6 — Sensitivity: Baseline vs Alternative HADI")
     st.caption("**Q4:** Where does the facility definition change district classifications?")
-    p = FIGURES_DIR / "fig06_sensitivity.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "fig06_sensitivity.png")
     st.success(
         "**Key finding:** 848 districts (45%) are unchanged. 555 (30%) worsen by 1 quintile. "
         "Only 5 districts shift by 3 quintiles — the most extreme reclassifications. "
@@ -367,7 +371,7 @@ with tab2:
     with col_q1a:
         st.markdown("**Top 10 — most emergency facilities (baseline)**")
         t = (
-            _df.nlargest(10, "n_emergency_active")
+            df.nlargest(10, "n_emergency_active")
             [["district_label", "n_emergency_active", "susalud_atenciones"]]
             .rename(columns={"district_label": "District",
                              "n_emergency_active": "Facilities",
@@ -379,7 +383,7 @@ with tab2:
     with col_q1b:
         st.markdown("**Top 10 — highest emergency care activity (SUSALUD visits)**")
         t = (
-            _df.nlargest(10, "susalud_atenciones")
+            df.nlargest(10, "susalud_atenciones")
             [["district_label", "susalud_atenciones", "n_emergency_active"]]
             .rename(columns={"district_label": "District",
                              "susalud_atenciones": "SUSALUD Visits",
@@ -392,7 +396,7 @@ with tab2:
     st.markdown("**Sample of zero-facility districts — 834 total (44.5%)**")
     st.caption("These districts have no SUSALUD-confirmed emergency facility within their boundaries.")
     zero_sample = (
-        _df[_df["n_emergency_active"] == 0]
+        df[df["n_emergency_active"] == 0]
         .nlargest(15, "pct_ccpp_gt20km_baseline")
         [["district_label", "dept_name", "n_ccpp_baseline", "pct_ccpp_gt20km_baseline", "dist_median_km"]]
         .rename(columns={"district_label": "District", "dept_name": "Department",
@@ -409,7 +413,6 @@ with tab2:
             "Median Dist (km)": st.column_config.NumberColumn(format="%.1f km"),
         },
     )
-
     st.divider()
 
     # Q2
@@ -418,7 +421,7 @@ with tab2:
     with col_q2a:
         st.markdown("**Most isolated — 100% of CCPP beyond 20 km (top 15 by median distance)**")
         t = (
-            _df[_df["pct_ccpp_gt20km_baseline"] == 100]
+            df[df["pct_ccpp_gt20km_baseline"] == 100]
             .nlargest(15, "dist_median_km")
             [["district_label", "dist_median_km", "n_emergency_active"]]
             .rename(columns={"district_label": "District",
@@ -434,7 +437,7 @@ with tab2:
     with col_q2b:
         st.markdown("**Best accessed — 0% of CCPP beyond 20 km (sample by dept)**")
         t = (
-            _df[_df["pct_ccpp_gt20km_baseline"] == 0]
+            df[df["pct_ccpp_gt20km_baseline"] == 0]
             .nsmallest(15, "dist_median_km")
             [["district_label", "dist_median_km", "n_emergency_active"]]
             .rename(columns={"district_label": "District",
@@ -447,7 +450,6 @@ with tab2:
             t, use_container_width=True,
             column_config={"Median Dist (km)": st.column_config.NumberColumn(format="%.1f km")},
         )
-
     st.divider()
 
     # Q3
@@ -456,7 +458,7 @@ with tab2:
     with col_q3a:
         st.markdown("**Most deprived — Q5 (top 15 by HADI score)**")
         t = (
-            _df[_df["hadi_quintile_baseline"] == "Q5 (Worst)"]
+            df[df["hadi_quintile_baseline"] == "Q5 (Worst)"]
             .nlargest(15, "hadi_baseline")
             [["district_label", "hadi_baseline", "n_emergency_active",
               "pct_ccpp_gt20km_baseline", "dist_median_km"]]
@@ -478,7 +480,7 @@ with tab2:
     with col_q3b:
         st.markdown("**Best served — Q1 (top 15 by lowest HADI score)**")
         t = (
-            _df[_df["hadi_quintile_baseline"] == "Q1 (Best)"]
+            df[df["hadi_quintile_baseline"] == "Q1 (Best)"]
             .nsmallest(15, "hadi_baseline")
             [["district_label", "hadi_baseline", "n_emergency_active", "susalud_atenciones"]]
             .rename(columns={"district_label": "District", "hadi_baseline": "HADI",
@@ -491,7 +493,6 @@ with tab2:
             t, use_container_width=True,
             column_config={"HADI": st.column_config.NumberColumn(format="%.3f")},
         )
-
     st.divider()
 
     # Q4
@@ -500,7 +501,7 @@ with tab2:
     with col_q4a:
         st.markdown("**Most worsened under alternative** (shift ≥ +2)")
         t = (
-            _df[_df["quintile_shift"] >= 2]
+            df[df["quintile_shift"] >= 2]
             .sort_values("quintile_shift", ascending=False)
             [["district_label", "quintile_shift", "hadi_baseline", "hadi_alternative",
               "hadi_quintile_baseline", "hadi_quintile_alternative"]]
@@ -521,7 +522,7 @@ with tab2:
     with col_q4b:
         st.markdown("**Most improved under alternative** (shift ≤ −2)")
         t = (
-            _df[_df["quintile_shift"] <= -2]
+            df[df["quintile_shift"] <= -2]
             .sort_values("quintile_shift")
             [["district_label", "quintile_shift", "hadi_baseline", "hadi_alternative",
               "hadi_quintile_baseline", "hadi_quintile_alternative"]]
@@ -552,8 +553,7 @@ with tab3:
     # ── Map 1 ─────────────────────────────────────────────────────────────────
     st.markdown("### Map 1 — HADI Quintile Choropleth (Baseline)")
     st.caption("**Q3:** Which districts are most underserved overall?")
-    p = FIGURES_DIR / "map01_hadi_choropleth.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "map01_hadi_choropleth.png")
     st.success(
         "**Pattern:** Q1 districts (best served, blue) cluster along the Pacific coast and in Lima. "
         "Q5 districts (most deprived, red) concentrate in Loreto, Ucayali, and Amazonas."
@@ -568,8 +568,7 @@ with tab3:
     # ── Map 2 ─────────────────────────────────────────────────────────────────
     st.markdown("### Map 2 — Baseline vs Alternative Side-by-Side")
     st.caption("**Q4:** Where does the facility definition change the classification?")
-    p = FIGURES_DIR / "map02_baseline_vs_alternative.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "map02_baseline_vs_alternative.png")
     st.success(
         "**Pattern:** The Amazon interior darkens under the alternative definition (fewer qualifying facilities). "
         "Some highland districts lighten — structural category captures facilities that don't report to SUSALUD."
@@ -584,8 +583,7 @@ with tab3:
     # ── Map 3 ─────────────────────────────────────────────────────────────────
     st.markdown("### Map 3 — Spatial Access Gap")
     st.caption("**Q2:** Which districts have populated centers far from emergency care?")
-    p = FIGURES_DIR / "map03_access_gap.png"
-    st.image(str(p), use_container_width=True) if p.exists() else st.warning("Run `python -m src.visualization`")
+    show_figure(FIGURES_DIR / "map03_access_gap.png")
     st.success(
         "**Pattern:** Several moderate-HADI districts show deep red — they have facilities in the district "
         "but their populated centers are scattered far from them. Physical isolation ≠ zero facilities."
@@ -599,9 +597,8 @@ with tab3:
 
     # ── Department-level summary table ────────────────────────────────────────
     st.subheader("Department-Level Summary")
-    df_t3 = load_hadi()
     dept_sum = (
-        df_t3.groupby("dept_name").agg(
+        df.groupby("dept_name").agg(
             Districts=("ubigeo", "count"),
             No_Facility=("n_emergency_active", lambda x: (x == 0).sum()),
             Median_Dist_km=("dist_median_km", lambda x: x.dropna().median()),
@@ -662,25 +659,22 @@ with tab3:
 
 with tab4:
     st.header("Interactive Exploration")
-    df = load_hadi()
 
-    # ── KPI summary at the top ────────────────────────────────────────────────
+    # ── KPI summary ───────────────────────────────────────────────────────────
     n_zero   = int((df["n_emergency_active"] == 0).sum())
     nat_med  = df["dist_median_km"].median()
     n_q5     = int((df["hadi_quintile_baseline"] == "Q5 (Worst)").sum())
-    n_change = int((df["quintile_shift"].abs() >= 1).sum())
+    n_change = int((df["quintile_shift"].fillna(0).abs() >= 1).sum())
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Districts analyzed", "1,873")
     c2.metric("No emergency facility", f"{n_zero:,} (44.5%)")
     c3.metric("National median distance", f"{nat_med:.1f} km")
     c4.metric("Q5 most deprived districts", f"{n_q5:,}")
-    st.caption(
-        f"**{n_change:,} districts** change quintile between baseline and alternative definitions."
-    )
+    st.caption(f"**{n_change:,} districts** change quintile between baseline and alternative definitions.")
     st.divider()
 
-    # ── Section 1: Interactive Folium maps ────────────────────────────────────
+    # ── Interactive Folium maps ───────────────────────────────────────────────
     st.subheader("Interactive Maps")
     map_choice = st.radio(
         "Select map",
@@ -706,7 +700,7 @@ with tab4:
 
     st.divider()
 
-    # ── Section 2: District search & filter ──────────────────────────────────
+    # ── District explorer ─────────────────────────────────────────────────────
     st.subheader("District Explorer")
 
     col_s, col_d, col_q, col_c = st.columns([2, 2, 2, 1])
@@ -749,12 +743,11 @@ with tab4:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "HADI":            st.column_config.NumberColumn(format="%.3f"),
+            "HADI":             st.column_config.NumberColumn(format="%.3f"),
             "Median Dist (km)": st.column_config.NumberColumn(format="%.1f km"),
-            "% CCPP > 20 km":  st.column_config.NumberColumn(format="%.1f%%"),
-            "Q-Shift":         st.column_config.NumberColumn(
-                help="+N = more deprived under alternative; −N = less deprived"
-            ),
+            "% CCPP > 20 km":   st.column_config.NumberColumn(format="%.1f%%"),
+            "Q-Shift":          st.column_config.NumberColumn(
+                                    help="+N = more deprived under alternative; −N = less deprived"),
         },
     )
     st.download_button(
@@ -763,10 +756,9 @@ with tab4:
         file_name="districts_filtered.csv",
         mime="text/csv",
     )
-
     st.divider()
 
-    # ── Section 3: Baseline vs Alternative scatter ────────────────────────────
+    # ── Baseline vs Alternative scatter ───────────────────────────────────────
     st.subheader("Q4 — Baseline vs Alternative HADI")
     st.caption(
         "Each point is one district. Points on the diagonal (y = x) are unchanged. "
@@ -810,19 +802,18 @@ with tab4:
     st.plotly_chart(fig_sc, use_container_width=True)
 
     sc1, sc2, sc3, sc4 = st.columns(4)
-    sc1.metric("Unchanged (shift 0)",  f"{(df['quintile_shift'] == 0).sum():,}")
-    sc2.metric("Worsened (shift > 0)", f"{(df['quintile_shift']  > 0).sum():,}")
-    sc3.metric("Improved (shift < 0)", f"{(df['quintile_shift']  < 0).sum():,}")
+    sc1.metric("Unchanged (shift 0)",  f"{int((df['quintile_shift'] == 0).sum()):,}")
+    sc2.metric("Worsened (shift > 0)", f"{int((df['quintile_shift']  > 0).sum()):,}")
+    sc3.metric("Improved (shift < 0)", f"{int((df['quintile_shift']  < 0).sum()):,}")
     sc4.metric("Max shift",            f"+{int(df['quintile_shift'].max())}")
-
     st.divider()
 
-    # ── Section 4: HADI components by quintile ───────────────────────────────
+    # ── HADI components by quintile ───────────────────────────────────────────
     st.subheader("Q3 — HADI Component Breakdown by Quintile")
     st.caption("Mean component scores per quintile. Switch definition to see how components shift.")
 
-    defn = st.radio("Facility definition", ["Baseline", "Alternative"], horizontal=True)
-    sfx  = "baseline" if defn == "Baseline" else "alternative"
+    defn  = st.radio("Facility definition", ["Baseline", "Alternative"], horizontal=True)
+    sfx   = "baseline" if defn == "Baseline" else "alternative"
     q_col = f"hadi_quintile_{sfx}"
 
     comp_means = (
@@ -841,9 +832,9 @@ with tab4:
         y=["Facility Density", "Emergency Activity", "Spatial Access"],
         barmode="group",
         color_discrete_map={
-            "Facility Density":  "#4e79a7",
-            "Emergency Activity":"#e15759",
-            "Spatial Access":    "#59a14f",
+            "Facility Density":   "#4e79a7",
+            "Emergency Activity": "#e15759",
+            "Spatial Access":     "#59a14f",
         },
         labels={"value": "Mean Component Score", "variable": "Component"},
     )
@@ -855,18 +846,20 @@ with tab4:
         margin=dict(l=40, r=20, t=30, b=40),
     )
     st.plotly_chart(cfig, use_container_width=True)
-
     st.divider()
 
-    # ── Section 5: Key findings ───────────────────────────────────────────────
+    # ── Key findings ──────────────────────────────────────────────────────────
     st.subheader("Key Findings")
+    purus_km = df.loc[df["ubigeo"] == "250401", "dist_median_km"]
+    purus_dist = f"{purus_km.values[0]:.0f}" if len(purus_km) > 0 else "~232"
+    loreto_q5 = int((df[df["hadi_quintile_baseline"] == "Q5 (Worst)"]["dept_name"] == "Loreto").sum())
     st.markdown(
         f"""
         - **Q1**: {n_zero:,} districts (44.5%) have zero SUSALUD-confirmed emergency facilities.
           Lima, Arequipa, and Callao concentrate most capacity.
         - **Q2**: 125 districts have 100% of populated centers beyond 20 km. Worst case: Purus district
-          (Ucayali) with a median distance of **{df.loc[df['ubigeo']=='250401', 'dist_median_km'].values[0]:.0f} km** to the nearest facility.
-        - **Q3**: Q5 districts are concentrated in Loreto ({int((df[df['hadi_quintile_baseline']=='Q5 (Worst)']['dept_name']=='Loreto').sum())} districts),
+          (Ucayali) with a median distance of **{purus_dist} km** to the nearest facility.
+        - **Q3**: Q5 districts are concentrated in Loreto ({loreto_q5} districts),
           Ucayali, and Amazonas. Best-served are Lima and Callao metropolitan districts.
         - **Q4**: 848 districts unchanged between definitions; 555 worsen by 1 quintile;
           5 shift by 3 quintiles — the alternative definition is most impactful for
