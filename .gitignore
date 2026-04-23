@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# SUSALUD raw CSVs — too large for GitHub (330 MB total, files exceed 100 MB limit)
+# Download from: http://datos.susalud.gob.pe/dataset/consulta-c1-produccion-asistencial-en-emergencia-por-ipress
+data/raw/SUSALUD/
+
+# Extracted CCPP archive — redundant, CCPP_0.zip is already committed
+data/raw/CCPP_extracted/
+
+# OS metadata
+.DS_Store
+Thumbs.db
