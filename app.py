@@ -48,6 +48,7 @@ QUINTILE_ORDER = ["Q1 (Best)", "Q2", "Q3", "Q4", "Q5 (Worst)"]
 def load_hadi() -> pd.DataFrame:
     df = pd.read_csv(TABLES_DIR / "district_hadi.csv", dtype={"ubigeo": str})
     df["dept_name"] = df["iddpto"].map(DEPT_NAMES).fillna(df["iddpto"].astype(str))
+    df["quintile_shift"] = pd.to_numeric(df["quintile_shift"], errors="coerce")
     return df
 
 
@@ -207,6 +208,28 @@ with tab1:
         distribution is extremely right-skewed (median = 0, max = 262 k visits) — min-max
         would compress 99% of districts into the bottom 1% of the scale.
         """
+    )
+
+    # ── How to run the pipeline ───────────────────────────────────────────────
+    st.subheader("How to Run")
+    st.code(
+        """\
+# 1 — Create environment (first time only)
+conda create -n homework2 python=3.11
+conda install -n homework2 -c conda-forge \\
+    geopandas folium matplotlib seaborn pandas numpy scipy \\
+    pillow pyproj shapely fiona pyogrio openpyxl pyarrow chardet
+pip install streamlit streamlit-folium plotly requests branca
+
+# 2 — Run the data pipeline (in order)
+conda run -n homework2 python -m src.cleaning       # Task 1
+conda run -n homework2 python -m src.geospatial     # Task 2
+conda run -n homework2 python -m src.metrics        # Task 3
+conda run -n homework2 python -m src.visualization  # Tasks 4 & 5
+
+# 3 — Launch the Streamlit app
+conda run -n homework2 streamlit run app.py""",
+        language="bash",
     )
 
     # ── Limitations ──────────────────────────────────────────────────────────
@@ -388,8 +411,8 @@ with tab3:
         df_tab3.groupby("dept_name").agg(
             districts=("ubigeo", "count"),
             zero_facility_districts=("n_emergency_active", lambda x: (x == 0).sum()),
-            median_dist_km=("dist_median_m_baseline", lambda x: (x / 1000).median()),
-            pct_ccpp_gt20km=("pct_ccpp_gt20km_baseline", "median"),
+            median_dist_km=("dist_median_m_baseline", lambda x: pd.to_numeric(x, errors="coerce").dropna().div(1000).median()),
+            pct_ccpp_gt20km=("pct_ccpp_gt20km_baseline", lambda x: pd.to_numeric(x, errors="coerce").median()),
             q5_districts=("hadi_quintile_baseline", lambda x: (x == "Q5 (Worst)").sum()),
         )
         .reset_index()
@@ -442,7 +465,7 @@ with tab4:
         )
         html_path = FIGURES_DIR / "map_hadi_explorer.html"
         html_content = load_folium_html(html_path)
-        components.html(html_content, height=600, scrolling=False)
+        components.html(html_content, height=650, scrolling=False)
     else:
         st.caption(
             "Background: % CCPP > 20 km (green = well-covered, red = isolated). "
@@ -452,7 +475,7 @@ with tab4:
         )
         html_path = FIGURES_DIR / "map_facilities_access.html"
         html_content = load_folium_html(html_path)
-        components.html(html_content, height=600, scrolling=False)
+        components.html(html_content, height=650, scrolling=False)
 
     st.divider()
 
@@ -492,8 +515,9 @@ with tab4:
         "hadi_quintile_baseline": "Quintile",
         "quintile_shift": "Quintile Shift",
     }
+    display_df = filt[list(display_cols.keys())].rename(columns=display_cols).reset_index(drop=True)
     st.dataframe(
-        filt[list(display_cols.keys())].rename(columns=display_cols).reset_index(drop=True),
+        display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -504,6 +528,12 @@ with tab4:
                 help="+N = more deprived under alternative; −N = less deprived"
             ),
         },
+    )
+    st.download_button(
+        "⬇ Download filtered table as CSV",
+        data=display_df.to_csv(index=False).encode("utf-8"),
+        file_name="districts_filtered.csv",
+        mime="text/csv",
     )
 
     st.divider()
