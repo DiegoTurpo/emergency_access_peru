@@ -57,12 +57,28 @@ emergency_access_peru/
 
 ## Data Sources
 
-| Dataset | Description | Rows |
-|---------|-------------|-----:|
-| IPRESS | SUSALUD facility registry (all active establishments) | 20,793 |
-| SUSALUD | Emergency care production 2015–2026 (Consulta-C1) | 2,193,587 |
-| CCPP | INEI populated centers with coordinates | 136,543 |
-| DISTRITOS | INEI district polygons (shapefile) | 1,873 |
+All four datasets must be downloaded manually and placed in `data/raw/` before running the pipeline.
+
+| Dataset | Source | Raw filename(s) | Rows |
+|---------|--------|-----------------|-----:|
+| **IPRESS** — MINSA facility registry | [datosabiertos.gob.pe/dataset/minsa-ipress](https://www.datosabiertos.gob.pe/dataset/minsa-ipress) | `IPRESS.csv` | 20,793 |
+| **SUSALUD** — Emergency care production 2015–2026 (Consulta-C1) | [datos.susalud.gob.pe/dataset/consulta-c1-produccion-asistencial-en-emergencia-por-ipress](http://datos.susalud.gob.pe/dataset/consulta-c1-produccion-asistencial-en-emergencia-por-ipress) | `susalud_emergencia_*.csv` | 2,193,587 |
+| **CCPP** — INEI populated centers with GPS coordinates | [datosabiertos.gob.pe/dataset/dataset-centros-poblados](https://www.datosabiertos.gob.pe/dataset/dataset-centros-poblados) | `CCPP.zip` (extract to `data/raw/`) | 136,543 |
+| **DISTRITOS** — INEI district boundary polygons | [GitHub d2cml-ai/Data-Science-Python `_data/Folium/DISTRITOS.shp`](https://github.com/d2cml-ai/Data-Science-Python/blob/main/_data/Folium/DISTRITOS.shp) | `DISTRITOS.shp` (+`.dbf`, `.shx`, `.prj`) | 1,873 |
+
+> **Expected `data/raw/` layout after download:**
+> ```
+> data/raw/
+> ├── IPRESS.csv
+> ├── susalud_emergencia_2015.csv
+> ├── susalud_emergencia_2016.csv
+> ├── ...
+> ├── CCPP.csv          ← extracted from the CCPP zip
+> ├── DISTRITOS.shp
+> ├── DISTRITOS.dbf
+> ├── DISTRITOS.shx
+> └── DISTRITOS.prj
+> ```
 
 ---
 
