@@ -337,13 +337,14 @@ def build_district_master(
     Access alternative columns : from compute_district_access (alternative)
     SUSALUD columns            : latest-year emergency production per district
     """
-    # Latest available year of SUSALUD data per district
+    # Latest available year of SUSALUD data per district (include names for labelling)
+    name_cols = [c for c in ["departamento", "provincia", "distrito"] if c in district_susalud.columns]
     latest = (
         district_susalud.sort_values("anho")
         .groupby("ubigeo")
         .last()
         .reset_index()
-        [["ubigeo", "anho", "total_atenciones", "total_atendidos", "n_ipress_reportantes"]]
+        [["ubigeo", "anho", "total_atenciones", "total_atendidos", "n_ipress_reportantes"] + name_cols]
         .rename(columns={
             "anho": "susalud_latest_year",
             "total_atenciones": "susalud_atenciones",

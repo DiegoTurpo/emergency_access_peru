@@ -289,6 +289,7 @@ def save_quintile_csv(master: gpd.GeoDataFrame):
     """Flat CSV with all district metrics for downstream Streamlit use."""
     keep = [
         "ubigeo", "iddpto", "idprov",
+        "departamento", "provincia", "distrito",
         "n_facilities_total", "n_emergency_active", "n_emergency_structural",
         "camas_total", "n_public", "n_private",
         "n_ccpp_baseline",

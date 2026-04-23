@@ -49,6 +49,15 @@ def load_hadi() -> pd.DataFrame:
     df = pd.read_csv(TABLES_DIR / "district_hadi.csv", dtype={"ubigeo": str})
     df["dept_name"] = df["iddpto"].map(DEPT_NAMES).fillna(df["iddpto"].astype(str))
     df["quintile_shift"] = pd.to_numeric(df["quintile_shift"], errors="coerce")
+    # Build a readable label: "Distrito, Provincia (Departamento)"
+    if "distrito" in df.columns:
+        df["district_label"] = (
+            df["distrito"].str.title() + ", " +
+            df["provincia"].str.title() + " (" +
+            df["departamento"].str.title() + ")"
+        )
+    else:
+        df["district_label"] = df["ubigeo"]
     return df
 
 
@@ -345,6 +354,130 @@ with tab2:
             st.markdown(spec["rationale"])
         st.divider()
 
+    # ── Named district answers to Q1–Q4 ──────────────────────────────────────
+    st.subheader("Direct Answers to the Four Research Questions")
+    _df = load_hadi()
+    label_col = "district_label"
+
+    st.markdown("#### Q1 — Which districts have the highest / lowest facility availability?")
+    col_q1a, col_q1b = st.columns(2)
+    with col_q1a:
+        st.markdown("**Top 10 — most emergency facilities**")
+        top_fac = (
+            _df.nlargest(10, "n_emergency_active")
+            [[label_col, "n_emergency_active", "susalud_atenciones"]]
+            .rename(columns={label_col: "District", "n_emergency_active": "Facilities",
+                             "susalud_atenciones": "SUSALUD Visits"})
+            .reset_index(drop=True)
+        )
+        top_fac.index += 1
+        st.dataframe(top_fac, use_container_width=True)
+    with col_q1b:
+        st.markdown("**Top 10 — highest emergency care activity (SUSALUD visits)**")
+        top_act = (
+            _df.nlargest(10, "susalud_atenciones")
+            [[label_col, "susalud_atenciones", "n_emergency_active"]]
+            .rename(columns={label_col: "District", "susalud_atenciones": "SUSALUD Visits",
+                             "n_emergency_active": "Facilities"})
+            .reset_index(drop=True)
+        )
+        top_act.index += 1
+        st.dataframe(top_act, use_container_width=True)
+    st.caption(f"**834 districts (44.5%) have zero SUSALUD-confirmed emergency facilities.**")
+
+    st.divider()
+    st.markdown("#### Q2 — Which districts have populated centers farthest from emergency services?")
+    top_isolated = (
+        _df.nlargest(15, "pct_ccpp_gt20km_baseline")
+        [[label_col, "pct_ccpp_gt20km_baseline", "dist_median_m_baseline", "n_emergency_active"]]
+        .rename(columns={
+            label_col: "District",
+            "pct_ccpp_gt20km_baseline": "% CCPP > 20 km",
+            "dist_median_m_baseline": "Median Distance (m)",
+            "n_emergency_active": "Emergency Facilities",
+        })
+        .reset_index(drop=True)
+    )
+    top_isolated.index += 1
+    st.dataframe(
+        top_isolated, use_container_width=True,
+        column_config={
+            "% CCPP > 20 km": st.column_config.NumberColumn(format="%.1f%%"),
+            "Median Distance (m)": st.column_config.NumberColumn(format="%.0f m"),
+        },
+    )
+
+    st.divider()
+    st.markdown("#### Q3 — Which districts are most and least underserved overall (HADI)?")
+    col_q3a, col_q3b = st.columns(2)
+    with col_q3a:
+        st.markdown("**Most deprived — Q5 (top 15 by HADI score)**")
+        worst = (
+            _df[_df["hadi_quintile_baseline"] == "Q5 (Worst)"]
+            .nlargest(15, "hadi_baseline")
+            [[label_col, "hadi_baseline", "n_emergency_active", "pct_ccpp_gt20km_baseline"]]
+            .rename(columns={label_col: "District", "hadi_baseline": "HADI",
+                             "n_emergency_active": "Facilities",
+                             "pct_ccpp_gt20km_baseline": "% CCPP > 20 km"})
+            .reset_index(drop=True)
+        )
+        worst.index += 1
+        st.dataframe(worst, use_container_width=True,
+                     column_config={"HADI": st.column_config.NumberColumn(format="%.3f"),
+                                    "% CCPP > 20 km": st.column_config.NumberColumn(format="%.1f%%")})
+    with col_q3b:
+        st.markdown("**Best served — Q1 (top 15 by lowest HADI score)**")
+        best = (
+            _df[_df["hadi_quintile_baseline"] == "Q1 (Best)"]
+            .nsmallest(15, "hadi_baseline")
+            [[label_col, "hadi_baseline", "n_emergency_active", "susalud_atenciones"]]
+            .rename(columns={label_col: "District", "hadi_baseline": "HADI",
+                             "n_emergency_active": "Facilities",
+                             "susalud_atenciones": "SUSALUD Visits"})
+            .reset_index(drop=True)
+        )
+        best.index += 1
+        st.dataframe(best, use_container_width=True,
+                     column_config={"HADI": st.column_config.NumberColumn(format="%.3f")})
+
+    st.divider()
+    st.markdown("#### Q4 — Which districts changed most between baseline and alternative?")
+    col_q4a, col_q4b = st.columns(2)
+    with col_q4a:
+        st.markdown("**Most worsened under alternative** (shift ≥ +2)")
+        worsened = (
+            _df[_df["quintile_shift"] >= 2]
+            .sort_values("quintile_shift", ascending=False)
+            [[label_col, "quintile_shift", "hadi_baseline", "hadi_alternative",
+              "hadi_quintile_baseline", "hadi_quintile_alternative"]]
+            .rename(columns={label_col: "District", "quintile_shift": "Shift",
+                             "hadi_baseline": "HADI (Base)", "hadi_alternative": "HADI (Alt)",
+                             "hadi_quintile_baseline": "Quintile (Base)",
+                             "hadi_quintile_alternative": "Quintile (Alt)"})
+            .reset_index(drop=True)
+        )
+        worsened.index += 1
+        st.dataframe(worsened, use_container_width=True,
+                     column_config={"HADI (Base)": st.column_config.NumberColumn(format="%.3f"),
+                                    "HADI (Alt)": st.column_config.NumberColumn(format="%.3f")})
+    with col_q4b:
+        st.markdown("**Most improved under alternative** (shift ≤ −2)")
+        improved = (
+            _df[_df["quintile_shift"] <= -2]
+            .sort_values("quintile_shift")
+            [[label_col, "quintile_shift", "hadi_baseline", "hadi_alternative",
+              "hadi_quintile_baseline", "hadi_quintile_alternative"]]
+            .rename(columns={label_col: "District", "quintile_shift": "Shift",
+                             "hadi_baseline": "HADI (Base)", "hadi_alternative": "HADI (Alt)",
+                             "hadi_quintile_baseline": "Quintile (Base)",
+                             "hadi_quintile_alternative": "Quintile (Alt)"})
+            .reset_index(drop=True)
+        )
+        improved.index += 1
+        st.dataframe(improved, use_container_width=True,
+                     column_config={"HADI (Base)": st.column_config.NumberColumn(format="%.3f"),
+                                    "HADI (Alt)": st.column_config.NumberColumn(format="%.3f")})
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — GeoSpatial Results
@@ -505,7 +638,7 @@ with tab4:
 
     display_cols = {
         "ubigeo": "UBIGEO",
-        "dept_name": "Department",
+        "district_label": "District",
         "n_emergency_active": "Emergency Facilities",
         "n_ccpp_baseline": "Populated Centers",
         "dist_median_m_baseline": "Median Distance (m)",
@@ -569,13 +702,13 @@ with tab4:
             marker=dict(color=color, size=4, opacity=0.7),
             name=f"Shift {label} ({len(sub)} districts)",
             hovertemplate=(
-                "<b>UBIGEO %{customdata[0]}</b><br>"
-                "Dept: %{customdata[1]}<br>"
+                "<b>%{customdata[0]}</b><br>"
+                "UBIGEO: %{customdata[1]}<br>"
                 "Baseline HADI: %{x:.3f}<br>"
                 "Alternative HADI: %{y:.3f}<br>"
                 "Quintile shift: %{customdata[2]}<extra></extra>"
             ),
-            customdata=sub[["ubigeo", "dept_name", "shift_label"]].values,
+            customdata=sub[["district_label", "ubigeo", "shift_label"]].values,
         ))
 
     fig_scatter.add_shape(
