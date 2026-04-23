@@ -865,7 +865,7 @@ with tab4:
         - **Q1**: {n_zero:,} districts (44.5%) have zero SUSALUD-confirmed emergency facilities.
           Lima, Arequipa, and Callao concentrate most capacity.
         - **Q2**: 125 districts have 100% of populated centers beyond 20 km. Worst case: Purus district
-          (Ucayali) with a median distance of **{df.loc[df['distrito']=='Purus', 'dist_median_km'].values[0]:.0f} km** to the nearest facility.
+          (Ucayali) with a median distance of **{df.loc[df['ubigeo']=='250401', 'dist_median_km'].values[0]:.0f} km** to the nearest facility.
         - **Q3**: Q5 districts are concentrated in Loreto ({int((df[df['hadi_quintile_baseline']=='Q5 (Worst)']['dept_name']=='Loreto').sum())} districts),
           Ucayali, and Amazonas. Best-served are Lima and Callao metropolitan districts.
         - **Q4**: 848 districts unchanged between definitions; 555 worsen by 1 quintile;
