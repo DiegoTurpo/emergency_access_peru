@@ -351,8 +351,8 @@ with tab1:
         f"({kpis['pct_zero_facility_baseline']:.1f} %) have **zero** SUSALUD-confirmed "
         "emergency facilities; Lima / Arequipa / Callao concentrate most activity.  \n"
         f"**Q2.** {kpis['n_ccpp_100pct_isolated']:,} districts have **100 %** of their "
-        "populated centers beyond 20 km from the nearest emergency facility (worst: Loreto, "
-        "Madre de Dios, Ucayali).  \n"
+        "populated centers beyond 20 km from the nearest emergency facility — "
+        "Madre de Dios, Moquegua and Loreto post the highest median distances.  \n"
         f"**Q3.** {kpis['n_q5_baseline']:,} districts fall in Q5 (most deprived); "
         f"{kpis['n_q1_baseline']:,} in Q1 (best served) under the baseline definition.  \n"
         f"**Q4.** {kpis['n_shift_unchanged']:,} districts "
@@ -552,9 +552,10 @@ with tab2:
     st.success(
         f"**Answer.** {kpis['n_zero_facility_baseline']:,} of {kpis['n_districts']:,} districts "
         f"({kpis['pct_zero_facility_baseline']:.1f} %) have **zero** SUSALUD-confirmed facilities. "
-        f"The {kpis['n_baseline_facilities']:,} active facilities concentrate in a handful of urban "
-        f"districts (Lima, Arequipa, Callao). Several districts with many facilities report **zero** "
-        f"SUSALUD visits — a reporting gap, not a true absence of care."
+        f"Facility *counts* are spread across mid-sized departments (Cajamarca, Junín, Áncash lead), "
+        f"but emergency *activity* (SUSALUD visits) concentrates in Lima, Arequipa and Callao. "
+        f"Several districts with many facilities report **zero** SUSALUD visits — a reporting gap, "
+        f"not a true absence of care."
     )
     q1_a, q1_b = st.columns(2)
     with q1_a:
@@ -629,8 +630,9 @@ with tab2:
         f"**Answer.** {kpis['n_ccpp_0pct_isolated']:,} districts "
         f"({kpis['pct_ccpp_0pct_isolated']:.0f} %) have **all** populated centers within 20 km of a "
         f"facility. But {kpis['n_ccpp_100pct_isolated']:,} districts "
-        f"({kpis['pct_ccpp_100pct_isolated']:.0f} %) have **zero** centers within 20 km — Loreto, "
-        f"Madre de Dios, and Ucayali dominate the worst isolation."
+        f"({kpis['pct_ccpp_100pct_isolated']:.0f} %) have **zero** centers within 20 km. "
+        f"By median district distance, Madre de Dios, Moquegua and Loreto lead the worst isolation; "
+        f"the single extreme case is Purus (Ucayali) at ~232 km."
     )
     st.markdown("**Fig 3 — Spatial access: national distribution (left) + by department (right)**")
     show_figure(FIGURES_DIR / "fig03_spatial_access.png")
@@ -679,10 +681,10 @@ with tab2:
     st.markdown("## Q3 — Which districts are most / least underserved overall?")
     st.success(
         f"**Answer.** {kpis['n_q5_baseline']:,} districts fall in Q5 (most deprived); "
-        f"{kpis['n_q1_baseline']:,} in Q1 (best served). In Q3 districts, spatial access is the "
-        f"weakest component — moderate-HADI districts can have facilities but still be physically "
-        f"isolated. In Q4–Q5 all three components converge: no facilities, no activity, and far "
-        f"from any service."
+        f"{kpis['n_q1_baseline']:,} in Q1 (best served). In Q3 districts, facility density and "
+        f"activity are the weakest components — moderate-HADI districts are physically reachable "
+        f"but under-reported / under-equipped. In Q4–Q5 all three components converge: no "
+        f"facilities, no activity, and far from any service."
     )
     q3_a, q3_b = st.columns(2)
     with q3_a:
@@ -852,7 +854,9 @@ with tab3:
     show_figure(FIGURES_DIR / "map01_hadi_choropleth.png")
     st.success(
         "**Pattern:** Q1 districts (best served, blue) cluster along the Pacific coast and in "
-        "Lima. Q5 districts (most deprived, red) concentrate in Loreto, Ucayali, and Amazonas."
+        "Lima. Q5 districts (most deprived, red) are most numerous in Loreto, Lima (rural "
+        "outskirts) and Puno; by *share* of the department's districts, Moquegua and Madre de "
+        "Dios are the most uniformly red."
     )
     st.divider()
 
@@ -1317,7 +1321,9 @@ with tab4:
         f"""
         - **Q1** — **{kpis['n_zero_facility_baseline']:,} districts
           ({kpis['pct_zero_facility_baseline']:.1f} %)** have zero SUSALUD-confirmed emergency
-          facilities. Lima, Arequipa, and Callao concentrate most capacity.
+          facilities. Facility counts spread across mid-sized departments (Cajamarca, Junín,
+          Áncash lead), but emergency *activity* — SUSALUD visits — concentrates in Lima,
+          Arequipa and Callao.
         - **Q2** — **{kpis['n_ccpp_100pct_isolated']:,} districts** have 100 % of populated
           centers beyond 20 km. Worst case: **Purus** (Ucayali) with a median distance of
           **{purus_dist} km** to the nearest facility.
