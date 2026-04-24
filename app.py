@@ -75,6 +75,18 @@ def load_ubigeo_names() -> pd.DataFrame:
 
 @st.cache_data
 def load_hadi() -> pd.DataFrame:
+    if not HADI_CSV.exists():
+        st.error(
+            f"Pipeline output not found: `{HADI_CSV.relative_to(ROOT)}`.\n\n"
+            "Run the data pipeline first:\n"
+            "```\n"
+            "conda run -n homework2 python -m src.cleaning\n"
+            "conda run -n homework2 python -m src.geospatial\n"
+            "conda run -n homework2 python -m src.metrics\n"
+            "conda run -n homework2 python -m src.visualization\n"
+            "```"
+        )
+        st.stop()
     df = pd.read_csv(HADI_CSV, dtype={"ubigeo": str})
 
     # Department name — robust to int/str iddpto encodings in the CSV.
